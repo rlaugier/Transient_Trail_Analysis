@@ -26,14 +26,18 @@ write_images = 1
 
 
 time_variation = np.diff(data, axis=1)/4.56
-second_variation = np.diff(data,n=2,axis=1)
+second_variation = np.diff(data,n=2,axis=1)/4.56
 correlation_map = np.ndarray([len(data),len(data)])
+correlation_mapo1 = np.ndarray([len(data),len(data)])
+correlation_mapo2 = np.ndarray([len(data),len(data)])
 coret2 = np.transpose(np.zeros(len(data)))
+coret1 = np.transpose(np.zeros(len(data)))
 coret22d = np.zeros_like(correlation_map)
 coret23d = np.zeros([46])
 
 for a in range((len(data)-46)/2, (len(data)+46)/2):
     coret2[a] = -1
+    coret1[a] = -5*(a-len(data)/2)
 
 
 
@@ -42,10 +46,21 @@ time_variation_name = "/home/echo/Documents/data/trail/IM_20160820_200226731_000
 correlation_map_name = "/home/echo/Documents/data/trail/IM_20160820_200226731_000000_30756801.fits.correlate"
 
 
-#pdb.set_trace()
 
-for b in range(0,len(data)):
-    correlation_map[b,:]= np.correlate(second_variation[b,:], coret2, "same")
+def correlate_image(data_array, correlation_kernel):
+    correlation_result = np.ndarray([len(data),len(data)])
+    correlation_bg = np.ndarray([len(data)])
+    correlation_max = np.ndarray(len(data))
+    for b in range(0,len(data)):
+        correlation_result[b,:]= np.correlate(data_array[b,:], correlation_kernel, "same")
+        correlation_bg[b] = np.std(correlation_result[b,:])
+        correlation_max[b] = np.max(correlation_result[b,:])
+    return correlation_result, correlation_bg, correlation_max
+        
+correlation_mapo2, noise_mapo2, max_mapo2  = correlate_image(second_variation, coret2)
+
+
+#correaltion_map01 = correlate_image(time_variation, coret2)
 
 #correlation_map[:,:]=np.correlate(second_variation[:,:],coret2, "same")
 
@@ -88,14 +103,40 @@ print "execution time"; print(t2-t1)
 
 
 
-t = np.arange(200, 400, 1)
-s = correlation_map[640,t]
+t = np.arange(0, 500, 1)
+s = np.transpose([correlation_mapo2[640,t]])
 plt.plot(t, s)
 
 plt.xlabel('time (s)')
 plt.ylabel('Value (ADU)')
-plt.title('About as simple as it gets, folks')
+plt.title('Sample from the correlation')
 plt.grid(True)
+
 if write_images:
     plt.savefig("test.png")
     plt.savefig('/home/echo/Documents/data/trail/plot1.png')
+plt.show()
+
+
+
+fig, ax1 = plt.subplots()
+y = np.arange(0, 250, 1)
+ax1 = max_mapo2[y]
+ax1.plot(y, maximum)
+
+ax1.xlabel('Max', color='b')
+ax1.ylabel('Value (ADU)')
+ax1.title('Maximum and noise')
+ax1.grid(True)
+ax2 = ax1.twinx()
+s2 = noise_mapo2[y]
+ax2.plot(t, s2, 'r.')
+ax2.set_ylabel('noise', color='r')
+
+
+print "noisebg"; print(noise_mapo2)
+print "max"; print(max_mapo2)
+print "max of max"; print(np.max(max_mapo2))
+plt.show()
+
+
