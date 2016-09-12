@@ -11,6 +11,7 @@ import matplotlib.pyplot as plt
 import os
 import time
 import glob
+import scipy.signal
 
 t1 = time.time()
 
@@ -37,9 +38,39 @@ coret1 = np.transpose(np.zeros(len(data)))
 coret22d = np.zeros_like(correlation_map)
 coret23d = np.zeros([46])
 
-for a in range((len(data)-46)/2, (len(data)+46)/2):
-    coret2[a] = -1
-    coret1[a] = -5*(a-len(data)/2)
+def create_kernels(fwhm, trail_length = 46):
+    
+    for a in range((len(data)-46)/2, (len(data)+46)/2):
+        coret2[a] = -1
+        coret1[a] = -5*(a-len(data)/2)
+    x = np.arange(-50,50,1)
+    
+    psfraw = scipy.signal.gaussian(100, fwhm/2.355, True)    
+    psf = np.roll(psfraw,-50)
+    var_psf = np.diff(psf)
+    core_o1 = psf[x-trail_length/2] + psf[x+trail_length/2]
+    core_o2 = var_psf[x-trail_length/2] + var_psf[x+trail_length/2]
+    
+    core_o3 = 1.0/(x+60)
+    
+
+
+    
+    t = np.arange(-50, 50, 1)
+    s = np.transpose([core_o3[t]])
+    plt.plot(t, s)
+    
+    plt.xlabel('x (pix)')
+    plt.ylabel('Value (ADU)')
+    plt.title('Sample from the correlation')
+    plt.grid(True)
+    
+    plt.show()
+    
+#    return psf, core_o1, core_o2
+    
+    
+    
     
 def correlate_image(data_array, correlation_kernel):
     correlation_result = np.ndarray([len(data),len(data)])
@@ -61,8 +92,8 @@ def process_file(fitsfile, correlation_kernel):
     #wcs = WCS(hdu[0].header)
     hdu.close()    
     
-    time_variation = np.diff(data, axis=1)/4.56
-    second_variation = np.diff(data,n=2,axis=1)/4.56
+    time_variation = np.diff(data, axis=1)#/4.56
+    second_variation = np.diff(data,n=2,axis=1)#/4.56
 
 
 #correlation_map = np.correlate(second_variation[685], coret2, "same")
