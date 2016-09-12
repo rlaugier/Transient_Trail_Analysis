@@ -27,7 +27,7 @@ outpath = "/tmp/Trail_Analysis/"
 debug = 0
 write_images = 1
 
-
+data = np.zeros([2048,2048])
 
 correlation_map = np.ndarray([len(data),len(data)])
 correlation_mapo1 = np.ndarray([len(data),len(data)])
@@ -129,6 +129,12 @@ def process_file(fitsfile, correlation_kernel):
     ax2.set_ylabel('Sigma correlation', color='r')
     
     plt.show()
+    
+    m = max(max_mapo2)
+    print "maximum = "; print(m)
+    print "at y = "
+    print ([i for i, j in enumerate(max_mapo2) if j == m])
+    
     return
     
     
