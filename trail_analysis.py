@@ -13,7 +13,7 @@ import time
 import glob
 import scipy.signal
 
-t1 = time.time()
+
 
 
 fitsfile = "/home/echo/Documents/data/trail/IM_20160820_200226731_000000_30756801.fits"
@@ -33,12 +33,16 @@ data = np.zeros([2048,2048])
 correlation_map = np.ndarray([len(data),len(data)])
 correlation_mapo1 = np.ndarray([len(data),len(data)])
 correlation_mapo2 = np.ndarray([len(data),len(data)])
-coret2 = np.transpose(np.zeros(len(data)))
-coret1 = np.transpose(np.zeros(len(data)))
+
 coret22d = np.zeros_like(correlation_map)
 coret23d = np.zeros([46])
 
 def create_kernels(fwhm, trail_length = 46):
+    coret2 = np.transpose(np.zeros(len(data)-2))
+    coret1 = np.transpose(np.zeros(len(data)))
+    core_o1 = np.transpose(np.zeros(100))
+    core_o2 = np.transpose(np.zeros(100))
+    core_o3 = np.transpose(np.zeros(100))
     
     for a in range((len(data)-46)/2, (len(data)+46)/2):
         coret2[a] = -1
@@ -48,10 +52,11 @@ def create_kernels(fwhm, trail_length = 46):
     psfraw = scipy.signal.gaussian(100, fwhm/2.355, True)    
     psf = np.roll(psfraw,-50)
     var_psf = np.diff(psf)
-    core_o1 = psf[x-trail_length/2] + psf[x+trail_length/2]
-    core_o2 = var_psf[x-trail_length/2] + var_psf[x+trail_length/2]
+    for a in x:
+        core_o1[a] = psf[a-trail_length/2] + psf[a+trail_length/2]
+        core_o2[a] = var_psf[a-trail_length/2] + var_psf[a+trail_length/2]
     
-    core_o3 = 1.0/(x+60)
+        core_o3[a] = 1.0/(a+60)
     
 
 
@@ -67,22 +72,27 @@ def create_kernels(fwhm, trail_length = 46):
     
     plt.show()
     
-#    return psf, core_o1, core_o2
+    return coret2#, psf, core_o1, core_o2
     
     
     
     
 def correlate_image(data_array, correlation_kernel):
-    correlation_result = np.ndarray([len(data),len(data)])
+    correlation_result = np.ndarray([len(data),len(data)-2])
     correlation_bg = np.ndarray([len(data)])
     correlation_max = np.ndarray(len(data))
     for b in range(0,len(data)):
-        correlation_result[b,:]= np.correlate(data_array[b,:], correlation_kernel, "same")
+        #correlation_result[b,:]= np.correlate(data_array[b,:], correlation_kernel, "same")
+        correlation_result[b,:]= scipy.signal.fftconvolve(data_array[b,:], correlation_kernel, mode="same")
         correlation_bg[b] = np.std(correlation_result[b,:])
         correlation_max[b] = np.max(correlation_result[b,:])
+#    for b in range(0,len(data)):
+#        
+#        relative_result = np.divide(correlation_result,data_array)
     return correlation_result, correlation_bg, correlation_max
 
 def process_file(fitsfile, correlation_kernel):
+    t1 = time.time()
     
     file_name = os.path.basename(fitsfile)
     
@@ -130,7 +140,7 @@ def process_file(fitsfile, correlation_kernel):
 
 
     t = np.arange(0, 500, 1)
-    s = np.transpose([correlation_mapo2[640,t]])
+    s = np.transpose([correlation_mapo2[233,t]])
     plt.plot(t, s)
     
     plt.xlabel('time (s)')
@@ -143,8 +153,7 @@ def process_file(fitsfile, correlation_kernel):
         plt.savefig('/home/echo/Documents/data/trail/plot1.png')
     plt.show()
     
-    
-    fig, ax1 = plt.subplots()
+    fig, ax1 = plt.subplots(figsize=(20, 10))
     t = np.arange(0, 2046, 1)
     s1 = max_mapo2[t]
     ax1.plot(t, s1, 'b-')
@@ -159,6 +168,9 @@ def process_file(fitsfile, correlation_kernel):
     ax2.plot(t, s2, 'r.')
     ax2.set_ylabel('Sigma correlation', color='r')
     
+    
+    
+
     plt.show()
     
     m = max(max_mapo2)
@@ -195,7 +207,7 @@ def process_file(fitsfile, correlation_kernel):
     #plt.show()
     #
     
-    
+coret2 = create_kernels(6,46)
 
 for image_a_traiter in filelist:
     process_file(image_a_traiter, coret2)
