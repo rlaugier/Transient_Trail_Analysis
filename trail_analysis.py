@@ -173,7 +173,7 @@ def correlate_image(data_array, correlation_kernel):
         #correlation_result[b,:]= np.correlate(data_array[b,:], correlation_kernel, "same")
         correlation_result[b,:]= scipy.signal.fftconvolve(data_array[b,:], correlation_kernel, mode="same")
         correlation_bg[b] = np.std(correlation_result[b,:])
-        correlation_max[b] = np.max(correlation_result[b,:])
+        correlation_max[b] = np.min(correlation_result[b,:])/np.median(correlation_result[b,:])
 #    for b in range(0,len(data)):
 #        
 #        relative_result = np.divide(correlation_result,data_array)
@@ -194,7 +194,8 @@ def process_file(fitsfile, correlation_kernel, order):
     
     if insert_stuff:
         dp, mysignal, dp, dp = create_kernels(4,46,2)
-        data[800,:] = data[800,:] + mysignal
+        data[800,:] = data[800,:] + mysignal/2
+        print "inserted signal of peak:"; print(max(mysignal)/2)
     
     time_variation = np.divide(np.pad(np.diff(data, axis=1),((0,0),(0,1)),"edge"),data)
     second_variation = np.divide(np.pad(np.diff(data,n=2,axis=1),((0,0),(0,2)),"edge"),data)
