@@ -44,30 +44,42 @@ def create_kernels(fwhm, trail_length = 46):
     core_o2 = np.transpose(np.zeros(100))
     core_o3 = np.transpose(np.zeros(100))
     
-    for a in range((len(data)-46)/2, (len(data)+46)/2):
+    for a in range((len(data)-trail_length)/2, (len(data)+trail_length)/2):
         coret2[a] = -1
         coret1[a] = -5*(a-len(data)/2)
-    x = np.arange(-50,50,1)
+    x = np.arange(0,99,1)
     
     psfraw = scipy.signal.gaussian(100, fwhm/2.355, True)    
-    psf = np.roll(psfraw,-50)
+    psf = psfraw
     var_psf = np.diff(psf)
     for a in x:
-        core_o1[a] = psf[a-trail_length/2] + psf[a+trail_length/2]
-        core_o2[a] = var_psf[a-trail_length/2] + var_psf[a+trail_length/2]
+        core_o1[a] = psf[a-trail_length] + psf[a]
+        core_o2[a] = var_psf[a-trail_length] + var_psf[a]
+        #core_o3
+        if a<= (len(x)-trail_length)/2:
+            core_o3[a] = 0
+        elif a<(len(x)+trail_length)/2:
+            core_o3[a] = 1.0/np.power(a+2,2)
+        else:
+            core_o3[a] = 0
+
+
+    core_o4 = np.convolve(core_o3,psf,"same")
+    core_o5 = np.pad(np.diff(core_o4),(0,1),"edge")
+    core_o6 = np.pad(np.diff(core_o4,n=2),(0,2),"edge")
     
-        core_o3[a] = 1.0/(a+60)
+    
     
 
 
     
-    t = np.arange(-50, 50, 1)
-    s = np.transpose([core_o3[t]])
+    t = np.arange(0, 100, 1)
+    s = np.transpose([core_o3, core_o4, core_o5, core_o6])
     plt.plot(t, s)
     
     plt.xlabel('x (pix)')
     plt.ylabel('Value (ADU)')
-    plt.title('Sample from the correlation')
+    plt.title('Correlation kernel')
     plt.grid(True)
     
     plt.show()
@@ -78,7 +90,7 @@ def create_kernels(fwhm, trail_length = 46):
     
     
 def correlate_image(data_array, correlation_kernel):
-    correlation_result = np.ndarray([len(data),len(data)-2])
+    correlation_result = np.empty_like(data_array)
     correlation_bg = np.ndarray([len(data)])
     correlation_max = np.ndarray(len(data))
     for b in range(0,len(data)):
@@ -102,8 +114,8 @@ def process_file(fitsfile, correlation_kernel):
     #wcs = WCS(hdu[0].header)
     hdu.close()    
     
-    time_variation = np.diff(data, axis=1)#/4.56
-    second_variation = np.diff(data,n=2,axis=1)#/4.56
+    time_variation = np.divide(np.pad(np.diff(data, axis=1)*65536,((0,0),(0,1)),"edge"),data)
+    second_variation = np.divide(np.pad(np.diff(data,n=2,axis=1)*65536,((0,0),(0,2)),"edge"),data)
 
 
 #correlation_map = np.correlate(second_variation[685], coret2, "same")
@@ -154,7 +166,7 @@ def process_file(fitsfile, correlation_kernel):
     plt.show()
     
     fig, ax1 = plt.subplots(figsize=(20, 10))
-    t = np.arange(0, 2046, 1)
+    t = np.arange(0, 2048, 1)
     s1 = max_mapo2[t]
     ax1.plot(t, s1, 'b-')
     ax1.set_xlabel('y position (pix)')
