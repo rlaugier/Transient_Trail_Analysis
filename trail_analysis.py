@@ -28,6 +28,7 @@ outpath = "/tmp/Trail_Analysis/"
 
 debug = 0
 write_images = 1
+insert_stuff = 1
 
 data = np.zeros([2048,2048])
 
@@ -131,7 +132,8 @@ def maxfunctiono0(C, S):
 #    exp_kernel = kernel_fuse(transient0,norm_star0, -0.8, -5.)
     exp_kernel = kernel_fuse(transient0,norm_star0, C, S)
     tominimize = np.max(scipy.signal.fftconvolve(tsignal, exp_kernel, "same")) / np.max(scipy.signal.fftconvolve(ssignal, exp_kernel, "same"))
-    return tominimize
+    return tominimize, exp_kernel
+    
     
 def optimize_kernels():
 
@@ -144,7 +146,7 @@ def optimize_kernels():
     max_fun = 0
     for C in np.arange(-1,-0.2,0.1):
         for S in np.arange(-10,2,1):
-            attempt = maxfunctiono0(C,S)
+            attempt, dp = maxfunctiono0(C,S)
             print([C,S,max_fun])
             if attempt > max_fun:
                 max_C = C
@@ -176,8 +178,10 @@ def correlate_image(data_array, correlation_kernel):
 #        
 #        relative_result = np.divide(correlation_result,data_array)
     return correlation_result, correlation_bg, correlation_max
+    
 
-def process_file(fitsfile, correlation_kernel):
+
+def process_file(fitsfile, correlation_kernel, order):
     t1 = time.time()
     
     file_name = os.path.basename(fitsfile)
@@ -188,16 +192,24 @@ def process_file(fitsfile, correlation_kernel):
     #wcs = WCS(hdu[0].header)
     hdu.close()    
     
-    time_variation = np.divide(np.pad(np.diff(data, axis=1)*65536,((0,0),(0,1)),"edge"),data)
-    second_variation = np.divide(np.pad(np.diff(data,n=2,axis=1)*65536,((0,0),(0,2)),"edge"),data)
+    if insert_stuff:
+        dp, mysignal, dp, dp = create_kernels(4,46,2)
+        data[800,:] = data[800,:] + mysignal
+    
+    time_variation = np.divide(np.pad(np.diff(data, axis=1),((0,0),(0,1)),"edge"),data)
+    second_variation = np.divide(np.pad(np.diff(data,n=2,axis=1),((0,0),(0,2)),"edge"),data)
 
 
 #correlation_map = np.correlate(second_variation[685], coret2, "same")
     time_variation_name = os.path.join(outpath+file_name+'.tvar')
     correlation_map_name = os.path.join(outpath+file_name+'.correlate')
 
-    correlation_mapo2, noise_mapo2, max_mapo2  = correlate_image(second_variation, coret2)
-
+    if order==2:
+        datatouse = second_variation
+        
+    elif order==0:
+        datatouse = data
+    correlation_mapo2, noise_mapo2, max_mapo2  = correlate_image(datatouse, coret2)
 
     if (debug ==1):
         print "image:"; print fitsfile
@@ -225,8 +237,8 @@ def process_file(fitsfile, correlation_kernel):
 
 
 
-    t = np.arange(0, 500, 1)
-    s = np.transpose([correlation_mapo2[233,t]])
+    t = np.arange(0, 2048, 1)
+    s = np.transpose([correlation_mapo2[800,t]])
     plt.plot(t, s)
     
     plt.xlabel('time (s)')
@@ -242,7 +254,7 @@ def process_file(fitsfile, correlation_kernel):
     fig, ax1 = plt.subplots(figsize=(20, 10))
     t = np.arange(0, 2048, 1)
     s1 = max_mapo2[t]
-    ax1.plot(t, s1, 'b-')
+    ax1.plot(t, s1, 'b.')
     ax1.set_xlabel('y position (pix)')
     # Make the y-axis label and tick labels match the line color.
     ax1.set_ylabel('Signal correlation', color='b')
@@ -294,6 +306,7 @@ def process_file(fitsfile, correlation_kernel):
     #
     
 coret2,dp,dp,dp = create_kernels(6,46,2)
+dp, mykernel = maxfunctiono0(-0.5,-5)
 
 for image_a_traiter in filelist:
-    process_file(image_a_traiter, coret2)
+    process_file(image_a_traiter, mykernel, 0)
