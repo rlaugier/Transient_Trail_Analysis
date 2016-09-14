@@ -4,7 +4,7 @@
 
 L'objectif de ce script est de rechercher des transitoires dans les images trainées de TAROT.
 """
-#import pdb
+import pdb
 from astropy.io import fits
 import numpy as np
 import matplotlib.pyplot as plt
@@ -12,6 +12,7 @@ import os
 import time
 import glob
 import scipy.signal
+import scipy.optimize
 
 
 
@@ -37,12 +38,14 @@ correlation_mapo2 = np.ndarray([len(data),len(data)])
 coret22d = np.zeros_like(correlation_map)
 coret23d = np.zeros([46])
 
-def create_kernels(fwhm, trail_length = 46):
+
+
+def create_kernels(fwhm, trail_length = 46, power = 2):
     coret2 = np.transpose(np.zeros(len(data)-2))
     coret1 = np.transpose(np.zeros(len(data)))
-    core_o1 = np.transpose(np.zeros(100))
-    core_o2 = np.transpose(np.zeros(100))
-    core_o3 = np.transpose(np.zeros(100))
+    core_o1 = np.transpose(np.zeros(100,float))
+    core_o2 = np.transpose(np.zeros(100,float))
+    template_function = np.transpose(np.zeros(100,float))
     
     for a in range((len(data)-trail_length)/2, (len(data)+trail_length)/2):
         coret2[a] = -1
@@ -52,29 +55,55 @@ def create_kernels(fwhm, trail_length = 46):
     psfraw = scipy.signal.gaussian(100, fwhm/2.355, True)    
     psf = psfraw
     var_psf = np.diff(psf)
+    #Power law adjustment parameter
+    pla = 2
+    #Creation of the function over the length of the trail
     for a in x:
         core_o1[a] = psf[a-trail_length] + psf[a]
         core_o2[a] = var_psf[a-trail_length] + var_psf[a]
-        #core_o3
+        #template_function
         if a<= (len(x)-trail_length)/2:
-            core_o3[a] = 0
+            template_function[a] = 0
         elif a<(len(x)+trail_length)/2:
-            core_o3[a] = 1.0/np.power(a+2,2)
+            #This must be computed with floats!!!
+            template_function[a] = np.power((100. - trail_length)/2 + pla, power) * 1./np.power(a + pla, power)
         else:
-            core_o3[a] = 0
+            template_function[a] = 0
 
+    #Convolved function
+    convolved_template = np.convolve(template_function,psf,"same") / fwhm
+    #First derivative of the convolved function
+    template_diff1 = np.pad(np.diff(convolved_template),(0,1),"edge")
+    #Second derivative of the convolved function
+    template_diff2 = np.pad(np.diff(convolved_template,n=2),(0,2),"edge")
 
-    core_o4 = np.convolve(core_o3,psf,"same")
-    core_o5 = np.pad(np.diff(core_o4),(0,1),"edge")
-    core_o6 = np.pad(np.diff(core_o4,n=2),(0,2),"edge")
+        
+#    t = np.arange(0, 100, 1)
+#    s = np.transpose([template_function, convolved_template, template_diff1, template_diff2,psf])
+#    plt.plot(t, s)
+#    
+#    plt.xlabel('x (pix)')
+#    plt.ylabel('Value (ADU)')
+#    plt.title('Correlation kernel')
+#    plt.grid(True)
+#    
+#    plt.show()
+    
+    kernel_o0 = np.pad(convolved_template*10000,((len(data)-100)/2,(len(data)-100)/2),"edge")
+    kernel_o1 = np.pad(convolved_template*10000,((len(data)-100)/2,(len(data)-100)/2),"edge")
+    kernel_o2 = np.pad(convolved_template*10000,((len(data)-100)/2,(len(data)-100)/2),"edge")
     
     
+    return coret2, kernel_o0, kernel_o1, kernel_o2
     
-
-
     
-    t = np.arange(0, 100, 1)
-    s = np.transpose([core_o3, core_o4, core_o5, core_o6])
+def kernel_fuse(k1, k2, C, S):
+    fused = k1 + C*np.roll(k2,int(S))
+    
+    t = np.arange(924, 1124, 1)
+    s = np.transpose([fused[t]])
+    
+    
     plt.plot(t, s)
     
     plt.xlabel('x (pix)')
@@ -83,8 +112,52 @@ def create_kernels(fwhm, trail_length = 46):
     plt.grid(True)
     
     plt.show()
+    print([C,S])
     
-    return coret2#, psf, core_o1, core_o2
+    return fused
+
+def maxfunctiono0(C, S):
+
+    #creation of kernels for stars and transient
+    dc,transient0, transient1, transient2 = create_kernels(4, 46, 2)
+    dc, norm_star0, norm_star1, norm_star2 = create_kernels(4, 46, 0)
+    
+    #creation of a dummy signal
+    signal = np.zeros(len(data))
+    ssignal = signal + np.roll(norm_star0, 0)
+    tsignal = signal + np.roll(transient0, 0)
+    
+
+#    exp_kernel = kernel_fuse(transient0,norm_star0, -0.8, -5.)
+    exp_kernel = kernel_fuse(transient0,norm_star0, C, S)
+    tominimize = np.max(scipy.signal.fftconvolve(tsignal, exp_kernel, "same")) / np.max(scipy.signal.fftconvolve(ssignal, exp_kernel, "same"))
+    return tominimize
+    
+def optimize_kernels():
+
+    
+    
+    #print scipy.optimize.minimize(minfunctiono0(C, S),[-0.4,-5.], "Nelder-Mead")
+    
+    max_C = 0.
+    max_S = 0.
+    max_fun = 0
+    for C in np.arange(-1,-0.2,0.1):
+        for S in np.arange(-10,2,1):
+            attempt = maxfunctiono0(C,S)
+            print([C,S,max_fun])
+            if attempt > max_fun:
+                max_C = C
+                max_S = S
+                max_fun = attempt
+                print ("cool")
+    return max_C, max_S, max_fun
+    
+    
+    
+    
+    #order 0 optimization
+    
     
     
     
@@ -93,6 +166,7 @@ def correlate_image(data_array, correlation_kernel):
     correlation_result = np.empty_like(data_array)
     correlation_bg = np.ndarray([len(data)])
     correlation_max = np.ndarray(len(data))
+
     for b in range(0,len(data)):
         #correlation_result[b,:]= np.correlate(data_array[b,:], correlation_kernel, "same")
         correlation_result[b,:]= scipy.signal.fftconvolve(data_array[b,:], correlation_kernel, mode="same")
@@ -219,7 +293,7 @@ def process_file(fitsfile, correlation_kernel):
     #plt.show()
     #
     
-coret2 = create_kernels(6,46)
+coret2,dp,dp,dp = create_kernels(6,46,2)
 
 for image_a_traiter in filelist:
     process_file(image_a_traiter, coret2)
