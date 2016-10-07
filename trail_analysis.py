@@ -4,6 +4,7 @@
 
 L'objectif de ce script est de rechercher des transitoires dans les images trainées de TAROT.
 """
+
 import pdb
 from astropy.io import fits
 import numpy as np
@@ -16,18 +17,8 @@ import scipy.optimize
 
 
 
-
-fitsfile = "/home/echo/Documents/data/trail/IM_20160820_200226731_000000_30756801.fits"
-input_path = "/home/echo/Documents/data/trail/"
-findit = os.path.join(input_path+'/*.fits')
-filelist = glob.glob(findit)
-
-
-outpath = "/tmp/Trail_Analysis/"
-
-
 debug = 0
-write_images = 1
+write_images = 0
 insert_stuff = 1
 
 data = np.zeros([2048,2048])
@@ -41,18 +32,29 @@ coret23d = np.zeros([46])
 
 
 
+outpath = "/tmp/TransientSearch/"
+
+def previewSize (filelist):
+    numberOfImg = 0
+    numberOfImg = len(filelist)
+    return numberOfImg
+    
+
+
+
+
 def create_kernels(fwhm, trail_length = 46, power = 2):
     coret2 = np.transpose(np.zeros(len(data)-2))
     coret1 = np.transpose(np.zeros(len(data)))
     core_o1 = np.transpose(np.zeros(100,float))
     core_o2 = np.transpose(np.zeros(100,float))
     template_function = np.transpose(np.zeros(100,float))
-    
-    for a in range((len(data)-trail_length)/2, (len(data)+trail_length)/2):
+    #Creation of a decay template function    
+    for a in range(int((len(data)-trail_length)/2), int((len(data)+trail_length)/2)):
         coret2[a] = -1
         coret1[a] = -5*(a-len(data)/2)
     x = np.arange(0,99,1)
-    
+    #Creation of a gaussian PSF
     psfraw = scipy.signal.gaussian(100, fwhm/2.355, True)    
     psf = psfraw
     var_psf = np.diff(psf)
@@ -90,9 +92,9 @@ def create_kernels(fwhm, trail_length = 46, power = 2):
 #    
 #    plt.show()
     
-    kernel_o0 = np.pad(convolved_template*10000,((len(data)-100)/2,(len(data)-100)/2),"edge")
-    kernel_o1 = np.pad(convolved_template*10000,((len(data)-100)/2,(len(data)-100)/2),"edge")
-    kernel_o2 = np.pad(convolved_template*10000,((len(data)-100)/2,(len(data)-100)/2),"edge")
+    kernel_o0 = np.pad(convolved_template*10000,(int((len(data)-100)/2),int((len(data)-100)/2)),"edge")
+    kernel_o1 = np.pad(template_diff1*10000,(int((len(data)-100)/2),int((len(data)-100)/2)),"edge")
+    kernel_o2 = np.pad(template_diff2*10000,(int((len(data)-100)/2),int((len(data)-100)/2)),"edge")
     
     
     return coret2, kernel_o0, kernel_o1, kernel_o2
@@ -133,6 +135,8 @@ def maxfunctiono0(C, S):
     exp_kernel = kernel_fuse(transient0,norm_star0, C, S)
     tominimize = np.max(scipy.signal.fftconvolve(tsignal, exp_kernel, "same")) / np.max(scipy.signal.fftconvolve(ssignal, exp_kernel, "same"))
     return tominimize, exp_kernel
+
+
     
     
 def optimize_kernels():
@@ -168,12 +172,14 @@ def correlate_image(data_array, correlation_kernel):
     correlation_result = np.empty_like(data_array)
     correlation_bg = np.ndarray([len(data)])
     correlation_max = np.ndarray(len(data))
+    dp, kernelbg, dp, dp = create_kernels(6,46,0)
+    croptool = np.pad(np.ones([len(data)-100]),(50,50),"constant", constant_values=0)
 
     for b in range(0,len(data)):
         #correlation_result[b,:]= np.correlate(data_array[b,:], correlation_kernel, "same")
-        correlation_result[b,:]= scipy.signal.fftconvolve(data_array[b,:], correlation_kernel, mode="same")
+        correlation_result[b,:]= np.divide(scipy.signal.fftconvolve(data_array[b,:], correlation_kernel, mode="same"), scipy.signal.fftconvolve(data_array[b,:],kernelbg, mode="same"))
         correlation_bg[b] = np.std(correlation_result[b,:])
-        correlation_max[b] = np.min(correlation_result[b,:])/np.median(correlation_result[b,:])
+        correlation_max[b] = np.max(np.multiply(correlation_result[b,:],croptool)) / np.median(correlation_result[b,:])
 #    for b in range(0,len(data)):
 #        
 #        relative_result = np.divide(correlation_result,data_array)
@@ -192,18 +198,19 @@ def process_file(fitsfile, correlation_kernel, order):
     #wcs = WCS(hdu[0].header)
     hdu.close()    
     
+    
+#correlation_map = np.correlate(second_variation[685], coret2, "same")
+    time_variation_name = os.path.join(outpath+file_name+'.tvar')
+    correlation_map_name = os.path.join(outpath+file_name+'.correlate')
+    
     if insert_stuff:
         dp, mysignal, dp, dp = create_kernels(4,46,2)
         data[800,:] = data[800,:] + mysignal/2
-        print "inserted signal of peak:"; print(max(mysignal)/2)
+        print ("inserted signal of peak:") ; print(max(mysignal)/2)
     
     time_variation = np.divide(np.pad(np.diff(data, axis=1),((0,0),(0,1)),"edge"),data)
     second_variation = np.divide(np.pad(np.diff(data,n=2,axis=1),((0,0),(0,2)),"edge"),data)
 
-
-#correlation_map = np.correlate(second_variation[685], coret2, "same")
-    time_variation_name = os.path.join(outpath+file_name+'.tvar')
-    correlation_map_name = os.path.join(outpath+file_name+'.correlate')
 
     if order==2:
         datatouse = second_variation
@@ -213,9 +220,9 @@ def process_file(fitsfile, correlation_kernel, order):
     correlation_mapo2, noise_mapo2, max_mapo2  = correlate_image(datatouse, coret2)
 
     if (debug ==1):
-        print "image:"; print fitsfile
-        print "destination of the d/dt"; print time_variation_name  
-        print "destination of the d2/dt2"; print correlation_map_name
+        print ("image:"); print (fitsfile)
+        print ("destination of the d/dt"); print (time_variation_name)
+        print ("destination of the d2/dt2"); print (correlation_map_name)
 
 
     #imagetosave = fits.open(new_img_name
@@ -234,7 +241,7 @@ def process_file(fitsfile, correlation_kernel, order):
 
 
     t2 = time.time()
-    print "execution time"; print(t2-t1)
+    print ("execution time"); print(t2-t1)
 
 
 
@@ -273,9 +280,12 @@ def process_file(fitsfile, correlation_kernel, order):
     plt.show()
     
     m = max(max_mapo2)
-    print "maximum = "; print(m)
-    print "at y = "
-    print ([i for i, j in enumerate(max_mapo2) if j == m])
+    print ("maximum = "); print(m)
+    print ("at y = ")
+#    print ([i for i, j in enumerate(max_mapo2) if j == m])
+    
+    
+
     
     return
     
@@ -305,9 +315,29 @@ def process_file(fitsfile, correlation_kernel, order):
     #print "max of max"; print(np.max(max_mapo2))
     #plt.show()
     #
+
+
+#singlefile = "/home/echo/Documents/data/log/grenouille_20160622.log"
+input_path = "/home/echo/Documents/data/trail/"
+findit = os.path.join(input_path+'/IM_*.fits')
+filelist = glob.glob(findit)
+imageNumber = previewSize(filelist)
     
 coret2,dp,dp,dp = create_kernels(6,46,2)
+#Maxfunction creates a composite kernel
 dp, mykernel = maxfunctiono0(-0.5,-5)
+
+dp, kernelsig, dp, dp = create_kernels(6,46,2)
+
+ImgIdx = 0
+imageDone = 0
 
 for image_a_traiter in filelist:
     process_file(image_a_traiter, mykernel, 0)
+    
+    #Progress calculation
+    ImgIdx += 1
+    imageDone += 1
+    completion = imageDone / imageNumber * 100
+    print ("Done %d sur %d soit %d %%" % (imageDone, imageNumber, completion)) #; print ("sur %d" % imageNumber)
+    #End of progress calculation
