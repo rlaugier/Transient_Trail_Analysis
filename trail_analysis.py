@@ -18,6 +18,7 @@ import scipy.optimize
 
 
 debug = 0
+order = 0
 write_images = 0
 insert_stuff = 1
 
@@ -92,20 +93,73 @@ def create_kernels(fwhm, trail_length = 46, power = 2):
 #    
 #    plt.show()
     
-    kernel_o0 = np.pad(convolved_template*10000,(int((len(data)-100)/2),int((len(data)-100)/2)),"edge")
-    kernel_o1 = np.pad(template_diff1*10000,(int((len(data)-100)/2),int((len(data)-100)/2)),"edge")
-    kernel_o2 = np.pad(template_diff2*10000,(int((len(data)-100)/2),int((len(data)-100)/2)),"edge")
+    kernel_o0 = np.pad(convolved_template*3000,(int((len(data)-100)/2),int((len(data)-100)/2)),"edge")
+    kernel_o1 = np.pad(template_diff1*3000,(int((len(data)-100)/2),int((len(data)-100)/2)),"edge")
+    kernel_o2 = np.pad(template_diff2*3000,(int((len(data)-100)/2),int((len(data)-100)/2)),"edge")
     
     
     return coret2, kernel_o0, kernel_o1, kernel_o2
     
     
-def kernel_fuse(k1, k2, C, S):
+def kernel_fuse(k1, k2, C, S, D):
     fused = k1 + C*np.roll(k2,int(S))
     
-    t = np.arange(924, 1124, 1)
-    s = np.transpose([fused[t]])
+#    t = np.arange(924, 1124, 1)
+#    s = np.transpose([fused[t]])
+#    
+#    
+#    plt.plot(t, s)
+#    
+#    plt.xlabel('x (pix)')
+#    plt.ylabel('Value (ADU)')
+#    plt.title('Correlation kernel')
+#    plt.grid(True)
+#    
+#    plt.show()
+    print([C,S,D])
     
+    return fused
+#Creates positive and negative masks of a givent trim width
+def create_mask(length,widthofmask):
+    goodpart = np.ones(length-2*widthofmask)
+    mymask = np.pad(goodpart,(widthofmask,widthofmask),"constant", constant_values = 0)
+    badpart = np.zeros(length-2*widthofmask)
+    outmask = np.pad(badpart,(widthofmask,widthofmask),"constant", constant_values = 1)
+    return mymask, outmask
+    
+#trims a 1D array, replacing values by a constant
+def smart_trim(myarray, widthofmask, fillvalue):
+    inmask, outmask = create_mask(len(myarray),widthofmask)
+    trimmedarray = np.multiply(myarray,inmask)+outmask*fillvalue
+    return trimmedarray
+
+def maxfunctiono0(C, S, D):
+
+    #creation of kernels for stars and transient
+    dc,transient0, transient1, transient2 = create_kernels(4, 46, 2)
+    dc, norm_star0, norm_star1, norm_star2 = create_kernels(4, 46, 0)
+    dc, antag_kernel0, antag_kernel1, antag_kernel2 = create_kernels(4, 46 +D, 0)
+    
+    #creation of a dummy signal
+    signal = np.ones(len(data))*1000
+    ssignal = signal + np.roll(norm_star0, 0)
+    tsignal = signal + np.roll(transient0, 0)
+    
+    
+    
+    exp_kernel = kernel_fuse(transient0,antag_kernel0, C, S, D)
+    tresponse = scipy.signal.fftconvolve(tsignal, exp_kernel, "same")
+    sresponse = scipy.signal.fftconvolve(ssignal, exp_kernel, "same")
+    
+    t = np.arange(924, 1124, 1)
+    s = np.transpose([tresponse[t],sresponse[t]])
+    
+    tresponse = smart_trim(tresponse, 20, 0)
+    sresponse = smart_trim(sresponse, 20, 0)
+    
+#    tominimize = tresponse[len(tresponse)/2-46/2] / max(sresponse)
+    tominimize = max(np.divide(tresponse,sresponse))
+
     
     plt.plot(t, s)
     
@@ -115,25 +169,9 @@ def kernel_fuse(k1, k2, C, S):
     plt.grid(True)
     
     plt.show()
-    print([C,S])
+      
     
-    return fused
-
-def maxfunctiono0(C, S):
-
-    #creation of kernels for stars and transient
-    dc,transient0, transient1, transient2 = create_kernels(4, 46, 2)
-    dc, norm_star0, norm_star1, norm_star2 = create_kernels(4, 46, 0)
-    
-    #creation of a dummy signal
-    signal = np.zeros(len(data))
-    ssignal = signal + np.roll(norm_star0, 0)
-    tsignal = signal + np.roll(transient0, 0)
-    
-
-#    exp_kernel = kernel_fuse(transient0,norm_star0, -0.8, -5.)
-    exp_kernel = kernel_fuse(transient0,norm_star0, C, S)
-    tominimize = np.max(scipy.signal.fftconvolve(tsignal, exp_kernel, "same")) / np.max(scipy.signal.fftconvolve(ssignal, exp_kernel, "same"))
+    print (tominimize)
     return tominimize, exp_kernel
 
 
@@ -147,17 +185,21 @@ def optimize_kernels():
     
     max_C = 0.
     max_S = 0.
+    max_D = 0
     max_fun = 0
-    for C in np.arange(-1,-0.2,0.1):
-        for S in np.arange(-10,2,1):
-            attempt, dp = maxfunctiono0(C,S)
-            print([C,S,max_fun])
-            if attempt > max_fun:
-                max_C = C
-                max_S = S
-                max_fun = attempt
-                print ("cool")
-    return max_C, max_S, max_fun
+    for C in np.arange(-0.6,-0.3,0.05):
+        for S in np.arange(-1,1,1):
+            for D in np.arange(15,25):
+                attempt, dp = maxfunctiono0(C,S,D)
+                #print([C,S,D,max_fun])
+                if attempt > max_fun:
+                    max_C = C
+                    max_S = S
+                    max_D = D
+                    max_fun = attempt
+                    print (max_C, max_S, max_D, max_fun)
+                    print ("cool")
+    return max_C, max_S, max_D, max_fun
     
     
     
@@ -170,16 +212,19 @@ def optimize_kernels():
     
 def correlate_image(data_array, correlation_kernel):
     correlation_result = np.empty_like(data_array)
+    correlation_result_trim = np.empty_like(data_array)
     correlation_bg = np.ndarray([len(data)])
     correlation_max = np.ndarray(len(data))
     dp, kernelbg, dp, dp = create_kernels(6,46,0)
-    croptool = np.pad(np.ones([len(data)-100]),(50,50),"constant", constant_values=0)
 
     for b in range(0,len(data)):
         #correlation_result[b,:]= np.correlate(data_array[b,:], correlation_kernel, "same")
         correlation_result[b,:]= np.divide(scipy.signal.fftconvolve(data_array[b,:], correlation_kernel, mode="same"), scipy.signal.fftconvolve(data_array[b,:],kernelbg, mode="same"))
-        correlation_bg[b] = np.std(correlation_result[b,:])
-        correlation_max[b] = np.max(np.multiply(correlation_result[b,:],croptool)) / np.median(correlation_result[b,:])
+        correlation_result_trim[b,:]=smart_trim(correlation_result[b,:],40,np.median(correlation_result[b,:]))
+        correlation_bg[b] = np.std(correlation_result_trim[b,:])
+        correlation_max[b] =np.max( correlation_result_trim[b,:]) / np.median(correlation_result_trim[b,:])
+#        pdb.set_trace()
+
 #    for b in range(0,len(data)):
 #        
 #        relative_result = np.divide(correlation_result,data_array)
@@ -217,7 +262,8 @@ def process_file(fitsfile, correlation_kernel, order):
         
     elif order==0:
         datatouse = data
-    correlation_mapo2, noise_mapo2, max_mapo2  = correlate_image(datatouse, coret2)
+    correlation_mapo2, noise_mapo2, max_mapo2 = correlate_image(datatouse, coret2)
+    
 
     if (debug ==1):
         print ("image:"); print (fitsfile)
@@ -245,39 +291,44 @@ def process_file(fitsfile, correlation_kernel, order):
 
 
 
-    t = np.arange(0, 2048, 1)
-    s = np.transpose([correlation_mapo2[800,t]])
-    plt.plot(t, s)
-    
-    plt.xlabel('time (s)')
-    plt.ylabel('Value (ADU)')
-    plt.title('Sample from the correlation')
-    plt.grid(True)
+#    
+#    fig, ax1 = plt.subplots(figsize=(20, 5))
+#    t = np.arange(0, 2048, 1)
+#    ax1 = np.transpose([smart_trim(correlation_mapo2[800,t],40,np.median(correlation_mapo2[800,:]))])
+#    plt.plot(t, ax1)
+#    
+#    plt.xlabel('time (s)')
+#    plt.ylabel('Value (ADU)')
+#    plt.title('Sample from the correlation')
+#    plt.grid(True)
+#    plt.show()
     
     if write_images:
         plt.savefig("test.png")
         plt.savefig('/home/echo/Documents/data/trail/plot1.png')
-    plt.show()
-    
-    fig, ax1 = plt.subplots(figsize=(20, 10))
-    t = np.arange(0, 2048, 1)
-    s1 = max_mapo2[t]
-    ax1.plot(t, s1, 'b.')
-    ax1.set_xlabel('y position (pix)')
-    # Make the y-axis label and tick labels match the line color.
-    ax1.set_ylabel('Signal correlation', color='b')
-    
-    
-    
-    ax2 = ax1.twinx()
-    s2 = noise_mapo2[t]
-    ax2.plot(t, s2, 'r.')
-    ax2.set_ylabel('Sigma correlation', color='r')
-    
-    
-    
 
-    plt.show()
+    
+#    fig, ax1 = plt.subplots(figsize=(20, 5))
+#    t = np.arange(0, 2048, 1)
+#    s1 = max_mapo2[t]
+#    ax1.plot(t, s1, 'b.')
+#    ax1.set_xlabel('y position (pix)')
+#    # Make the y-axis label and tick labels match the line color.
+#    ax1.set_ylabel('Signal correlation', color='b')
+#    
+#    
+#    
+#    ax2 = ax1.twinx()
+#    s2 = noise_mapo2[t]
+#    ax2.plot(t, s2, 'r.')
+#    ax2.set_ylabel('Sigma correlation', color='r')
+#    plt.show()
+    
+    find_max(correlation_mapo2,data)
+    
+    imgplot = plt.imshow(correlation_mapo2)
+    imgplot.set_cmap('spectral')
+    find_max(correlation_mapo2)
     
     m = max(max_mapo2)
     print ("maximum = "); print(m)
@@ -287,14 +338,7 @@ def process_file(fitsfile, correlation_kernel, order):
     
 
     
-    return
-    
-    
-
-    
-    
-    
-    
+    return  
     #fig, ax1 = plt.subplots()
     #y = np.arange(0, 250, 1)
     #ax1 = max_mapo2[y]
@@ -314,8 +358,72 @@ def process_file(fitsfile, correlation_kernel, order):
     #print "max"; print(max_mapo2)
     #print "max of max"; print(np.max(max_mapo2))
     #plt.show()
-    #
+def crop(anarray,location):
+    cropresult = np.zeros((100,100))
+    for u in np.arange(location[0]-50,location[0]+50,1):
+        for v in np.arange(location[1]-50,location[1]+50,1):
+            cropresult[u,v] = anarray[u,v]
+    return cropresult
 
+
+def find_max(myimgdata,data):
+    imgdata = np.copy(myimgdata)
+    maxval = np.zeros(10)
+    maxposx = np.zeros(10)
+    maxposy = np.zeros(10)
+    maskval = np.median(imgdata)
+    
+    for n in np.arange(0,10,1):
+        
+        maxval[n] = np.max(imgdata)
+        maxposa = np.unravel_index(imgdata.argmax(),imgdata.shape)
+        maxposx[n] = maxposa[0]
+        maxposy[n] = maxposa[1]
+        maskmax = np.zeros(np.shape(imgdata))
+        print (maxposx,maxposy)
+        print (maxval)
+#        zoom = crop(imgdata,[maxposx[n],maxposy[n]])
+#        imgplot = plt.imshow(zoom)
+#        imgplot.set_cmap('spectral')
+#        fig, ax1 = plt.subplots(figsize=(15, 5))
+#        t = np.arange(int(maxposy[n]-50),int(maxposy[n]+50),1)
+#        ax1 = np.transpose([imgdata[int(maxposx[n]),t]])
+#        ax2 = ax1.twinx()
+#        s2 = np.transpose([data[int(maxposx[n]),t]])
+################################################
+#        fig, ax1 = plt.subplots()
+        t = np.arange(int(maxposy[n]-100),int(maxposy[n]+100),1)
+        s1 = np.transpose([imgdata[int(maxposx[n]),t]])
+#        ax1.plot(t, s1, 'b')
+#        ax1.xlabel('Max', color='b')
+#        ax1.ylabel('correlation (ADU)')
+#        ax1.title('Signal and correlation')
+#        ax1.grid(True)
+#        ax2 = ax1.twinx()
+        s2 = np.transpose([data[int(maxposx[n]),t]])
+#        ax2.plot(t, s2, 'r')
+#        ax2.set_ylabel('image', color='r')
+        
+        
+        
+        plt.plot(t, s1, 'b')
+        plt.figure(figsize=(20, 5))
+        plt.show()
+        plt.plot(t,s2,'r')
+        plt.figure(figsize=(20, 5))
+        plt.show()
+        
+        
+
+        
+        
+    
+        for m in np.arange(maxposx[n]-100,maxposx[n]+100,1):
+            for o in np.arange(maxposy[n]-100,maxposy[n]+100,1):
+                imgdata[m,o]=maskval
+
+                maskmax[maxposx[n],maxposy[n]] = maskval
+    return maxval,np.transpose([maxposx,maxposy])
 
 #singlefile = "/home/echo/Documents/data/log/grenouille_20160622.log"
 input_path = "/home/echo/Documents/data/trail/"
@@ -325,7 +433,8 @@ imageNumber = previewSize(filelist)
     
 coret2,dp,dp,dp = create_kernels(6,46,2)
 #Maxfunction creates a composite kernel
-dp, mykernel = maxfunctiono0(-0.5,-5)
+#dp, mykernel = maxfunctiono0(-0.5,-5,0)
+dp, mykernel = maxfunctiono0(-0.35,-1,15)
 
 dp, kernelsig, dp, dp = create_kernels(6,46,2)
 
