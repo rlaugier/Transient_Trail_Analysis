@@ -328,7 +328,7 @@ def process_file(fitsfile, correlation_kernel, order):
     
     imgplot = plt.imshow(correlation_mapo2)
     imgplot.set_cmap('spectral')
-    find_max(correlation_mapo2)
+
     
     m = max(max_mapo2)
     print ("maximum = "); print(m)
@@ -372,6 +372,7 @@ def find_max(myimgdata,data):
     maxposx = np.zeros(10)
     maxposy = np.zeros(10)
     maskval = np.median(imgdata)
+    maskval = 0
     
     for n in np.arange(0,10,1):
         
@@ -380,8 +381,7 @@ def find_max(myimgdata,data):
         maxposx[n] = maxposa[0]
         maxposy[n] = maxposa[1]
         maskmax = np.zeros(np.shape(imgdata))
-        print (maxposx,maxposy)
-        print (maxval)
+        print (maskval)
 #        zoom = crop(imgdata,[maxposx[n],maxposy[n]])
 #        imgplot = plt.imshow(zoom)
 #        imgplot.set_cmap('spectral')
@@ -418,11 +418,14 @@ def find_max(myimgdata,data):
         
         
     
-        for m in np.arange(maxposx[n]-100,maxposx[n]+100,1):
-            for o in np.arange(maxposy[n]-100,maxposy[n]+100,1):
+        for m in np.arange(max(maxposx[n]-100,0,2), min(maxposx[n]+100,1,len(imgdata),2),1):
+            for o in np.arange(max(maxposy[n]-100,0,2), min(maxposy[n]+100,len(imgdata),2),1):
+                
                 imgdata[m,o]=maskval
-
                 maskmax[maxposx[n],maxposy[n]] = maskval
+        imgplot = plt.imshow(imgdata)
+        imgplot.set_cmap('spectral')
+        plt.show()
     return maxval,np.transpose([maxposx,maxposy])
 
 #singlefile = "/home/echo/Documents/data/log/grenouille_20160622.log"
