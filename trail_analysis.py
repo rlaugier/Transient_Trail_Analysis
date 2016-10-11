@@ -7,6 +7,8 @@ L'objectif de ce script est de rechercher des transitoires dans les images train
 
 import pdb
 from astropy.io import fits
+from astropy import wcs
+from astropy.convolution import Gaussian2DKernel, convolve
 import numpy as np
 import matplotlib.pyplot as plt
 import os
@@ -130,7 +132,7 @@ def create_mask(length,widthofmask):
 #trims a 1D array, replacing values by a constant
 def smart_trim(myarray, widthofmask, fillvalue):
     inmask, outmask = create_mask(len(myarray),widthofmask)
-    trimmedarray = np.multiply(myarray,inmask)+outmask*fillvalue
+    trimmedarray = np.multiply(myarray,inmask)+np.multiply(outmask,fillvalue)
     return trimmedarray
 
 def maxfunctiono0(C, S, D):
@@ -200,10 +202,6 @@ def optimize_kernels():
                     print (max_C, max_S, max_D, max_fun)
                     print ("cool")
     return max_C, max_S, max_D, max_fun
-    
-    
-    
-    
     #order 0 optimization
     
     
@@ -215,7 +213,7 @@ def correlate_image(data_array, correlation_kernel):
     correlation_result_trim = np.empty_like(data_array)
     correlation_bg = np.ndarray([len(data)])
     correlation_max = np.ndarray(len(data))
-    dp, kernelbg, dp, dp = create_kernels(6,46,0)
+    dp, kernelbg, dp, dp = create_kernels(4,46,0)
 
     for b in range(0,len(data)):
         #correlation_result[b,:]= np.correlate(data_array[b,:], correlation_kernel, "same")
@@ -228,7 +226,7 @@ def correlate_image(data_array, correlation_kernel):
 #    for b in range(0,len(data)):
 #        
 #        relative_result = np.divide(correlation_result,data_array)
-    return correlation_result, correlation_bg, correlation_max
+    return correlation_result_trim, correlation_bg, correlation_max
     
 
 
@@ -241,7 +239,13 @@ def process_file(fitsfile, correlation_kernel, order):
     data = hdu[0].data
     HDU_header = hdu[0].header
     #wcs = WCS(hdu[0].header)
-    hdu.close()    
+    hdu.close()
+    w = wcs.WCS(HDU_header)
+    print ("WCS information")
+    w.wcs.print_contents()
+    
+    gauss = Gaussian2DKernel(4/2.35)
+    data = convolve(data, gauss)
     
     
 #correlation_map = np.correlate(second_variation[685], coret2, "same")
@@ -250,7 +254,7 @@ def process_file(fitsfile, correlation_kernel, order):
     
     if insert_stuff:
         dp, mysignal, dp, dp = create_kernels(4,46,2)
-        data[800,:] = data[800,:] + mysignal/2
+        data[800,:] = data[800,:] + mysignal
         print ("inserted signal of peak:") ; print(max(mysignal)/2)
     
     time_variation = np.divide(np.pad(np.diff(data, axis=1),((0,0),(0,1)),"edge"),data)
@@ -286,8 +290,7 @@ def process_file(fitsfile, correlation_kernel, order):
 
 
 
-    t2 = time.time()
-    print ("execution time"); print(t2-t1)
+
 
 
 
@@ -336,7 +339,8 @@ def process_file(fitsfile, correlation_kernel, order):
 #    print ([i for i, j in enumerate(max_mapo2) if j == m])
     
     
-
+    t2 = time.time()
+    print ("execution time"); print(t2-t1)
     
     return  
     #fig, ax1 = plt.subplots()
@@ -366,13 +370,14 @@ def crop(anarray,location):
     return cropresult
 
 
+
+
 def find_max(myimgdata,data):
     imgdata = np.copy(myimgdata)
     maxval = np.zeros(10)
     maxposx = np.zeros(10)
     maxposy = np.zeros(10)
     maskval = np.median(imgdata)
-    maskval = 0
     
     for n in np.arange(0,10,1):
         
@@ -392,7 +397,9 @@ def find_max(myimgdata,data):
 #        s2 = np.transpose([data[int(maxposx[n]),t]])
 ################################################
 #        fig, ax1 = plt.subplots()
-        t = np.arange(int(maxposy[n]-100),int(maxposy[n]+100),1)
+        
+        #Using min and max to avoid reaching out of range
+        t = np.arange(max(int(maxposy[n]-10),0),min(int(maxposy[n]+100),len(imgdata)),1)
         s1 = np.transpose([imgdata[int(maxposx[n]),t]])
 #        ax1.plot(t, s1, 'b')
 #        ax1.xlabel('Max', color='b')
@@ -412,20 +419,21 @@ def find_max(myimgdata,data):
         plt.plot(t,s2,'r')
         plt.figure(figsize=(20, 5))
         plt.show()
+        print ([maxposx[n],maxposy[n]])
         
         
 
         
         
     
-        for m in np.arange(max(maxposx[n]-100,0,2), min(maxposx[n]+100,1,len(imgdata),2),1):
-            for o in np.arange(max(maxposy[n]-100,0,2), min(maxposy[n]+100,len(imgdata),2),1):
-                
-                imgdata[m,o]=maskval
-                maskmax[maxposx[n],maxposy[n]] = maskval
-        imgplot = plt.imshow(imgdata)
-        imgplot.set_cmap('spectral')
-        plt.show()
+        for m in np.arange(maxposx[n]-100, maxposx[n]+100,1):
+            for o in np.arange(maxposy[n]-100, maxposy[n]+100,1):
+                if (0 <= m <len(imgdata)-2) & (0 <= o <len(imgdata)-2):
+                    imgdata[m,o]=maskval
+                    maskmax[maxposx[n],maxposy[n]] = maskval
+#        imgplot = plt.imshow(imgdata)
+#        imgplot.set_cmap('spectral')
+#        plt.show()
     return maxval,np.transpose([maxposx,maxposy])
 
 #singlefile = "/home/echo/Documents/data/log/grenouille_20160622.log"
@@ -434,12 +442,12 @@ findit = os.path.join(input_path+'/IM_*.fits')
 filelist = glob.glob(findit)
 imageNumber = previewSize(filelist)
     
-coret2,dp,dp,dp = create_kernels(6,46,2)
+coret2,dp,dp,dp = create_kernels(4,46,2)
 #Maxfunction creates a composite kernel
 #dp, mykernel = maxfunctiono0(-0.5,-5,0)
-dp, mykernel = maxfunctiono0(-0.35,-1,15)
+dp, mykernel = maxfunctiono0(-0.40,0,23)
 
-dp, kernelsig, dp, dp = create_kernels(6,46,2)
+dp, kernelsig, dp, dp = create_kernels(4,46,2)
 
 ImgIdx = 0
 imageDone = 0
