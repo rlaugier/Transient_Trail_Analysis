@@ -239,10 +239,10 @@ def process_file(fitsfile, correlation_kernel, order):
     data = hdu[0].data
     HDU_header = hdu[0].header
     #wcs = WCS(hdu[0].header)
+    w = wcs.WCS(hdu[0].header)
     hdu.close()
-    w = wcs.WCS(HDU_header)
     print ("WCS information")
-    w.wcs.print_contents()
+    print (w.wcs.print_contents())
     
     gauss = Gaussian2DKernel(4/2.35)
     data = convolve(data, gauss)
@@ -255,7 +255,7 @@ def process_file(fitsfile, correlation_kernel, order):
     if insert_stuff:
         dp, mysignal, dp, dp = create_kernels(4,46,2)
         data[800,:] = data[800,:] + mysignal
-        print ("inserted signal of peak:") ; print(max(mysignal)/2)
+        print ("inserted signal of peak:") ; print(np.max(mysignal))
     
     time_variation = np.divide(np.pad(np.diff(data, axis=1),((0,0),(0,1)),"edge"),data)
     second_variation = np.divide(np.pad(np.diff(data,n=2,axis=1),((0,0),(0,2)),"edge"),data)
@@ -329,40 +329,13 @@ def process_file(fitsfile, correlation_kernel, order):
     
     find_max(correlation_mapo2,data)
     
-    imgplot = plt.imshow(correlation_mapo2)
-    imgplot.set_cmap('spectral')
-
-    
-    m = max(max_mapo2)
-    print ("maximum = "); print(m)
-    print ("at y = ")
-#    print ([i for i, j in enumerate(max_mapo2) if j == m])
-    
     
     t2 = time.time()
     print ("execution time"); print(t2-t1)
     
     return  
-    #fig, ax1 = plt.subplots()
-    #y = np.arange(0, 250, 1)
-    #ax1 = max_mapo2[y]
-    #ax1.plot(y, ax1)
-    #
-    #ax1.xlabel('Max', color='b')
-    #ax1.ylabel('Value (ADU)')
-    #ax1.title('Maximum and noise')
-    #ax1.grid(True)
-    #ax2 = ax1.twinx()
-    #s2 = noise_mapo2[y]
-    #ax2.plot(t, s2, 'r.')
-    #ax2.set_ylabel('noise', color='r')
-    #
-    #
-    #print "noisebg"; print(noise_mapo2)
-    #print "max"; print(max_mapo2)
-    #print "max of max"; print(np.max(max_mapo2))
-    #plt.show()
-def crop(anarray,location):
+
+def crop (anarray,location):
     cropresult = np.zeros((100,100))
     for u in np.arange(location[0]-50,location[0]+50,1):
         for v in np.arange(location[1]-50,location[1]+50,1):
@@ -387,14 +360,8 @@ def find_max(myimgdata,data):
         maxposy[n] = maxposa[1]
         maskmax = np.zeros(np.shape(imgdata))
         print (maskval)
-#        zoom = crop(imgdata,[maxposx[n],maxposy[n]])
-#        imgplot = plt.imshow(zoom)
-#        imgplot.set_cmap('spectral')
-#        fig, ax1 = plt.subplots(figsize=(15, 5))
-#        t = np.arange(int(maxposy[n]-50),int(maxposy[n]+50),1)
-#        ax1 = np.transpose([imgdata[int(maxposx[n]),t]])
-#        ax2 = ax1.twinx()
-#        s2 = np.transpose([data[int(maxposx[n]),t]])
+        
+        
 ################################################
 #        fig, ax1 = plt.subplots()
         
@@ -413,8 +380,9 @@ def find_max(myimgdata,data):
         
         
         
-        plt.plot(t, s1, 'b')
-        plt.figure(figsize=(20, 5))
+        
+#        plt.plot(t, s1, 'b')
+#        plt.figure(figsize=(20, 5))
         plt.show()
         plt.plot(t,s2,'r')
         plt.figure(figsize=(20, 5))
@@ -425,12 +393,11 @@ def find_max(myimgdata,data):
 
         
         
-    
-        for m in np.arange(maxposx[n]-100, maxposx[n]+100,1):
-            for o in np.arange(maxposy[n]-100, maxposy[n]+100,1):
+        #Masquage du maximum local
+        for m in np.arange(maxposx[n]-50, maxposx[n]+50,1):
+            for o in np.arange(maxposy[n]-50, maxposy[n]+50,1):
                 if (0 <= m <len(imgdata)-2) & (0 <= o <len(imgdata)-2):
                     imgdata[m,o]=maskval
-                    maskmax[maxposx[n],maxposy[n]] = maskval
 #        imgplot = plt.imshow(imgdata)
 #        imgplot.set_cmap('spectral')
 #        plt.show()
