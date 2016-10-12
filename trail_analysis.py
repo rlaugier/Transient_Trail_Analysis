@@ -9,6 +9,10 @@ import pdb
 from astropy.io import fits
 from astropy import wcs
 from astropy.convolution import Gaussian2DKernel, convolve
+from astroquery.vizier import Vizier
+from astroquery.ned import Ned
+from astropy.coordinates import SkyCoord
+from astropy.table import Table, Column
 import numpy as np
 import matplotlib.pyplot as plt
 import os
@@ -239,11 +243,10 @@ def process_file(fitsfile, correlation_kernel, order):
     data = hdu[0].data
     HDU_header = hdu[0].header
     #wcs = WCS(hdu[0].header)
-    w = wcs.WCS(hdu[0].header)
+    w = wcs.WCS(HDU_header)
     hdu.close()
     print ("WCS information")
-    print (w.wcs.print_contents())
-    
+    print (w)
     gauss = Gaussian2DKernel(4/2.35)
     data = convolve(data, gauss)
     
@@ -254,7 +257,7 @@ def process_file(fitsfile, correlation_kernel, order):
     
     if insert_stuff:
         dp, mysignal, dp, dp = create_kernels(4,46,2)
-        data[800,:] = data[800,:] + mysignal
+        data[300,:] = data[300,:] + mysignal
         print ("inserted signal of peak:") ; print(np.max(mysignal))
     
     time_variation = np.divide(np.pad(np.diff(data, axis=1),((0,0),(0,1)),"edge"),data)
@@ -327,7 +330,7 @@ def process_file(fitsfile, correlation_kernel, order):
 #    ax2.set_ylabel('Sigma correlation', color='r')
 #    plt.show()
     
-    find_max(correlation_mapo2,data)
+    find_max(correlation_mapo2,data,w)
     
     
     t2 = time.time()
@@ -345,20 +348,21 @@ def crop (anarray,location):
 
 
 
-def find_max(myimgdata,data):
+def find_max(myimgdata,data,w):
+    ntc = 10
     imgdata = np.copy(myimgdata)
-    maxval = np.zeros(10)
-    maxposx = np.zeros(10)
-    maxposy = np.zeros(10)
+    maxval = np.zeros(ntc)
+    maxposx = np.zeros(ntc)
+    maxposy = np.zeros(ntc)
     maskval = np.median(imgdata)
     
-    for n in np.arange(0,10,1):
+    for n in np.arange(0,ntc,1):
         
         maxval[n] = np.max(imgdata)
         maxposa = np.unravel_index(imgdata.argmax(),imgdata.shape)
         maxposx[n] = maxposa[0]
         maxposy[n] = maxposa[1]
-        maskmax = np.zeros(np.shape(imgdata))
+        
         print (maskval)
         
         
@@ -387,7 +391,15 @@ def find_max(myimgdata,data):
         plt.plot(t,s2,'r')
         plt.figure(figsize=(20, 5))
         plt.show()
-        print ([maxposx[n],maxposy[n]])
+        print ([maxposy[n]+25,maxposx[n]])
+        rawlocation = w.wcs_pix2world(maxposy[n]+25,maxposx[n],1)
+        location = SkyCoord(rawlocation[0]*u.deg,rawlocation[1]*u.deg)
+        print (location)
+        try:
+            brightStars = Vizier(catalog = "USNOB1.0", column_filters={"R1mag":"< 15"},row_limit=50).query_region(location, width = "100s")[0]
+            print (brightStars)
+        except :
+            print ("Error retrieving catalog")
         
         
 
