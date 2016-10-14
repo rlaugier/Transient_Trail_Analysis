@@ -13,8 +13,10 @@ from astroquery.vizier import Vizier
 from astroquery.ned import Ned
 from astropy.coordinates import SkyCoord
 from astropy.table import Table, Column
+import astropy.units as u
 import numpy as np
 import matplotlib.pyplot as plt
+from matplotlib.backends.backend_pdf import PdfPages
 import os
 import time
 import glob
@@ -26,6 +28,8 @@ import scipy.optimize
 debug = 0
 order = 0
 write_images = 0
+show_plots = 0
+write_plots = 1
 insert_stuff = 1
 
 data = np.zeros([2048,2048])
@@ -243,10 +247,11 @@ def process_file(fitsfile, correlation_kernel, order):
     data = hdu[0].data
     HDU_header = hdu[0].header
     #wcs = WCS(hdu[0].header)
-    w = wcs.WCS(HDU_header)
     hdu.close()
-    print ("WCS information")
-    print (w)
+    
+    if not ((HDU_header["TRACKSPA"]==0.) & (HDU_header["TRACKSPD"]==0.)):
+        return
+
     gauss = Gaussian2DKernel(4/2.35)
     data = convolve(data, gauss)
     
@@ -330,7 +335,7 @@ def process_file(fitsfile, correlation_kernel, order):
 #    ax2.set_ylabel('Sigma correlation', color='r')
 #    plt.show()
     
-    find_max(correlation_mapo2,data,w)
+    find_max(correlation_mapo2,data,HDU_header)
     
     
     t2 = time.time()
@@ -346,17 +351,41 @@ def crop (anarray,location):
     return cropresult
 
 
+def check_star(starlocation):
+    try:
+        brightStars = Vizier(catalog = "USNOB1.0", column_filters={"R1mag":"< 10"},row_limit=50).query_region(starlocation, width = "20s")[0]
+        print (brightStars)
+        return brightStars
+    except :
+        print ("Error retrieving catalog")
+        return 0
 
 
-def find_max(myimgdata,data,w):
-    ntc = 10
+
+
+def find_max(myimgdata,data,HDU_header):
+    
+    w = wcs.WCS(HDU_header)
+    print ("WCS information")
+    print (w)
+    
+    
+    ntc = 20
     imgdata = np.copy(myimgdata)
     maxval = np.zeros(ntc)
     maxposx = np.zeros(ntc)
     maxposy = np.zeros(ntc)
     maskval = np.median(imgdata)
     
+    report = os.path.join(outpath+HDU_header["FILENAME"]+"_"+"output.pdf")
+    
+    mypdf = PdfPages(report)
+    
+
+    
     for n in np.arange(0,ntc,1):
+        
+        print("########################################################################")
         
         maxval[n] = np.max(imgdata)
         maxposa = np.unravel_index(imgdata.argmax(),imgdata.shape)
@@ -365,42 +394,47 @@ def find_max(myimgdata,data,w):
         
         print (maskval)
         
-        
-################################################
-#        fig, ax1 = plt.subplots()
-        
-        #Using min and max to avoid reaching out of range
-        t = np.arange(max(int(maxposy[n]-10),0),min(int(maxposy[n]+100),len(imgdata)),1)
-        s1 = np.transpose([imgdata[int(maxposx[n]),t]])
-#        ax1.plot(t, s1, 'b')
-#        ax1.xlabel('Max', color='b')
-#        ax1.ylabel('correlation (ADU)')
-#        ax1.title('Signal and correlation')
-#        ax1.grid(True)
-#        ax2 = ax1.twinx()
-        s2 = np.transpose([data[int(maxposx[n]),t]])
-#        ax2.plot(t, s2, 'r')
-#        ax2.set_ylabel('image', color='r')
-        
-        
-        
-        
-#        plt.plot(t, s1, 'b')
-#        plt.figure(figsize=(20, 5))
-        plt.show()
-        plt.plot(t,s2,'r')
-        plt.figure(figsize=(20, 5))
-        plt.show()
-        print ([maxposy[n]+25,maxposx[n]])
-        rawlocation = w.wcs_pix2world(maxposy[n]+25,maxposx[n],1)
+        print ([maxposy[n]+21,maxposx[n]])
+        rawlocation = w.wcs_pix2world(maxposy[n]+21,maxposx[n],1)
         location = SkyCoord(rawlocation[0]*u.deg,rawlocation[1]*u.deg)
-        print (location)
-        try:
-            brightStars = Vizier(catalog = "USNOB1.0", column_filters={"R1mag":"< 15"},row_limit=50).query_region(location, width = "100s")[0]
-            print (brightStars)
-        except :
-            print ("Error retrieving catalog")
+        isbrightstar = check_star(location)
+        if not isbrightstar:
+            
         
+        
+    ################################################
+            fig = plt.figure()
+            
+            #Using min and max to avoid reaching out of range
+            t = np.arange(max(int(maxposy[n]-10),0),min(int(maxposy[n]+100),len(imgdata)),1)
+    #        ax1.plot(t, s1, 'b')
+            plt.xlabel('Time/RA (0.22s)/(pix)', color='b')
+            plt.ylabel('Image value (ADU)')
+            plt.title("Candidate number"+str(n))
+    #        ax1.grid(True)
+    #        ax2 = ax1.twinx()
+            s1 = np.transpose([data[int(maxposx[n]),t]])
+    #        ax2.plot(t, s2, 'r')
+    #        ax2.set_ylabel('image', color='r')
+            
+            
+            
+            
+    #        plt.plot(t, s1, 'b')
+    #        plt.figure(figsize=(20, 5))
+#            plt.show()
+            plt.figure(figsize=(12, 3))
+            plt.plot(t,s1,'r')
+
+            plt.title(HDU_header["FILENAME"]+" candidate number "+str(n)+" location "+str(location))
+            if write_plots :
+                plt.savefig(mypdf,format="pdf")
+            if show_plots :
+                plt.show()
+            else :
+                plt.close()
+            print (location)
+                  
         
 
         
@@ -408,11 +442,13 @@ def find_max(myimgdata,data,w):
         #Masquage du maximum local
         for m in np.arange(maxposx[n]-50, maxposx[n]+50,1):
             for o in np.arange(maxposy[n]-50, maxposy[n]+50,1):
-                if (0 <= m <len(imgdata)-2) & (0 <= o <len(imgdata)-2):
+                if ((0 <= m <len(imgdata)-2) & (0 <= o <len(imgdata)-2)):
                     imgdata[m,o]=maskval
 #        imgplot = plt.imshow(imgdata)
 #        imgplot.set_cmap('spectral')
 #        plt.show()
+                    
+    mypdf.close()
     return maxval,np.transpose([maxposx,maxposy])
 
 #singlefile = "/home/echo/Documents/data/log/grenouille_20160622.log"
