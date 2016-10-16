@@ -43,7 +43,7 @@ coret23d = np.zeros([46])
 
 
 
-outpath = "/tmp/TransientSearch/"
+outpath = "/home/echo/Documents/data/trail/output/"
 
 def previewSize (filelist):
     numberOfImg = 0
@@ -262,8 +262,8 @@ def process_file(fitsfile, correlation_kernel, order):
     
     if insert_stuff:
         dp, mysignal, dp, dp = create_kernels(4,46,2)
-        data[300,:] = data[300,:] + mysignal
-        print ("inserted signal of peak:") ; print(np.max(mysignal))
+        data[300,:] = data[300,:] + mysignal/2
+        print ("inserted signal of peak:") ; print(np.max(mysignal)/2)
     
     time_variation = np.divide(np.pad(np.diff(data, axis=1),((0,0),(0,1)),"edge"),data)
     second_variation = np.divide(np.pad(np.diff(data,n=2,axis=1),((0,0),(0,2)),"edge"),data)
@@ -351,14 +351,18 @@ def crop (anarray,location):
     return cropresult
 
 
-def check_star(starlocation):
+def check_star(starlocation,starlocationtail):
     try:
         brightStars = Vizier(catalog = "USNOB1.0", column_filters={"R1mag":"< 10"},row_limit=50).query_region(starlocation, width = "20s")[0]
-        print (brightStars)
         return brightStars
     except :
-        print ("Error retrieving catalog")
-        return 0
+        try:
+            brightStars = Vizier(catalog = "USNOB1.0", column_filters={"R1mag":"< 10"},row_limit=50).query_region(starlocationtail, width = "20s")[0]
+            return brightStars
+        except : 
+            print ("Does not seem to be a bright star")
+            return 0
+
 
 
 
@@ -396,8 +400,11 @@ def find_max(myimgdata,data,HDU_header):
         
         print ([maxposy[n]+21,maxposx[n]])
         rawlocation = w.wcs_pix2world(maxposy[n]+21,maxposx[n],1)
+        rawlocationtail = w.wcs_pix2world(maxposy[n]+21-45,maxposx[n],1)
         location = SkyCoord(rawlocation[0]*u.deg,rawlocation[1]*u.deg)
-        isbrightstar = check_star(location)
+        locationtail = SkyCoord(rawlocationtail[0]*u.deg,rawlocationtail[1]*u.deg)
+        isbrightstar = check_star(location,locationtail)
+        print (isbrightstar)
         if not isbrightstar:
             
         
@@ -408,9 +415,10 @@ def find_max(myimgdata,data,HDU_header):
             #Using min and max to avoid reaching out of range
             t = np.arange(max(int(maxposy[n]-10),0),min(int(maxposy[n]+100),len(imgdata)),1)
     #        ax1.plot(t, s1, 'b')
-            plt.xlabel('Time/RA (0.22s)/(pix)', color='b')
+            plt.figure(figsize=(12, 5))
+            plt.title(HDU_header["FILENAME"]+" candidate number "+str(n)+" location "+str(location))
+            plt.xlabel('Time/RA (0.22s)/(pix)')
             plt.ylabel('Image value (ADU)')
-            plt.title("Candidate number"+str(n))
     #        ax1.grid(True)
     #        ax2 = ax1.twinx()
             s1 = np.transpose([data[int(maxposx[n]),t]])
@@ -423,12 +431,13 @@ def find_max(myimgdata,data,HDU_header):
     #        plt.plot(t, s1, 'b')
     #        plt.figure(figsize=(20, 5))
 #            plt.show()
-            plt.figure(figsize=(12, 5))
+
             plt.plot(t,s1,'r')
 
-            plt.title(HDU_header["FILENAME"]+" candidate number "+str(n)+" location "+str(location))
+
             if write_plots :
                 plt.savefig(mypdf,format="pdf")
+                plt.close()
             if show_plots :
                 plt.show()
             else :
@@ -451,11 +460,17 @@ def find_max(myimgdata,data,HDU_header):
     mypdf.close()
     return maxval,np.transpose([maxposx,maxposy])
 
+
+input_path = str(input("path to search : "))
+first = int(input("Start at : "))
+last = int(input("End at : "))
+
 #singlefile = "/home/echo/Documents/data/log/grenouille_20160622.log"
 input_path = "/home/echo/Documents/data/trail/"
-findit = os.path.join(input_path+'/IM_*.fits')
+
+findit = os.path.join(input_path+'/IM_*.fits.gz')
 filelist = glob.glob(findit)
-imageNumber = previewSize(filelist)
+imageNumber = previewSize(filelist[first:last])
     
 coret2,dp,dp,dp = create_kernels(4,46,2)
 #Maxfunction creates a composite kernel
@@ -467,12 +482,12 @@ dp, kernelsig, dp, dp = create_kernels(4,46,2)
 ImgIdx = 0
 imageDone = 0
 
-for image_a_traiter in filelist:
+for image_a_traiter in filelist[first:last]:
     process_file(image_a_traiter, mykernel, 0)
     
     #Progress calculation
     ImgIdx += 1
     imageDone += 1
     completion = imageDone / imageNumber * 100
-    print ("Done %d sur %d soit %d %%" % (imageDone, imageNumber, completion)) #; print ("sur %d" % imageNumber)
+    print ("Done %d sur %d soit %f %%" % (imageDone, imageNumber, completion)) #; print ("sur %d" % imageNumber)
     #End of progress calculation
