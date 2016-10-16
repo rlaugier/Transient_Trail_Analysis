@@ -18,6 +18,7 @@ import numpy as np
 import matplotlib.pyplot as plt
 from matplotlib.backends.backend_pdf import PdfPages
 import os
+import sys
 import time
 import glob
 import scipy.signal
@@ -460,13 +461,18 @@ def find_max(myimgdata,data,HDU_header):
     mypdf.close()
     return maxval,np.transpose([maxposx,maxposy])
 
-
-input_path = str(input("path to search : "))
-first = int(input("Start at : "))
-last = int(input("End at : "))
+if not sys.argv:
+    input_path = str(input("path to search : "))
+    first = int(input("Start at : "))
+    last = int(input("End at : "))
+else:
+    input_path = str(sys.argv[1])
+    first = int(sys.argv[2])
+    last  = int(sys.argv[3])
+    print (first,last,input_path)
 
 #singlefile = "/home/echo/Documents/data/log/grenouille_20160622.log"
-input_path = "/home/echo/Documents/data/trail/"
+#input_path = "/home/echo/Documents/data/trail/"
 
 findit = os.path.join(input_path+'/IM_*.fits.gz')
 filelist = glob.glob(findit)
