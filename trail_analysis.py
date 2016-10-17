@@ -358,7 +358,7 @@ def check_star(starlocation,starlocationtail):
         return brightStars
     except :
         try:
-            brightStars = Vizier(catalog = "USNOB1.0", column_filters={"R1mag":"< 10"},row_limit=50).query_region(starlocationtail, width = "20s")[0]
+            brightStars = Vizier(catalog = "USNOB1.0", column_filters={"R1mag":"< 10"},row_limit=50).query_region(starlocationtail, width = "35s")[0]
             return brightStars
         except : 
             print ("Does not seem to be a bright star")
@@ -401,7 +401,7 @@ def find_max(myimgdata,data,HDU_header):
         
         print ([maxposy[n]+21,maxposx[n]])
         rawlocation = w.wcs_pix2world(maxposy[n]+21,maxposx[n],1)
-        rawlocationtail = w.wcs_pix2world(maxposy[n]+21-45,maxposx[n],1)
+        rawlocationtail = w.wcs_pix2world(maxposy[n]+21-40,maxposx[n],1)
         location = SkyCoord(rawlocation[0]*u.deg,rawlocation[1]*u.deg)
         locationtail = SkyCoord(rawlocationtail[0]*u.deg,rawlocationtail[1]*u.deg)
         isbrightstar = check_star(location,locationtail)
@@ -485,8 +485,8 @@ dp, mykernel = maxfunctiono0(-0.40,0,23)
 
 dp, kernelsig, dp, dp = create_kernels(4,46,2)
 
-ImgIdx = 0
-imageDone = 0
+ImgIdx = 0.
+imageDone = 0.
 
 for image_a_traiter in filelist[first:last]:
     process_file(image_a_traiter, mykernel, 0)
