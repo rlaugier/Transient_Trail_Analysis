@@ -34,7 +34,7 @@ write_images = 0
 show_plots = 0
 write_plots = 1
 insert_stuff = 1
-fermiOnly = 0
+fermiOnly = 1
 
 #get table from http://heasarc.gsfc.nasa.gov/db-perl/W3Browse/w3table.pl?tablehead=name%3Dfermigbrst&Action=More+Options
 #remove the final "," at the end of the file
@@ -87,27 +87,36 @@ def read_alert_table(filename):
     
 def fermirelevance (location, imgtime, fermiTable):
 #    goodtiming =  (np.where(fermiTable["timeoftrig"]>imgtime - 10*u.hour)) & (np.where(fermiTable["timeoftrig"]<imgtime + 10*u.hour))
-    for GBM in fermiTable:
-        mytimeseparation = imgtime - GBM["timeoftrig"]
-        print ("time is within -3h +3h of")
-        print ("location")
-        print (location)
-        GBMpos = SkyCoord(GBM["ra"],GBM["dec"], unit=(u.hourangle, u.deg))
-        print("GBMpos")
-        print(GBMpos)
-        myseparation = SkyCoord.separation(GBMpos,location)
-        print (myseparation)
-        radius = GBM["error_radius"] 
-        goodpos = np.where(myseparation.deg < 3*radius + 60)
-        for myGBM in (fermiTable[goodpos]):
-            print ("Field could overlap ")
-            print(myseparation, mytimeseparation)
-            print ("GBM of interest:")
-            print (myGBM)
-            print ("Image center")
-            print (location)
-            return myseparation, mytimeseparation, myGBM
-        return 0,0,0
+    found = 0
+    goodGBM = 0
+    if fermiOnly :
+        for GBM in fermiTable:
+            mytimeseparation = imgtime.jd - GBM["timeoftrig"].jd
+            print (found)
+            if (mytimeseparation*86400 < 3600.) & (mytimeseparation*86400 > -3600):
+                print ("location")
+                print (location)
+                GBMpos = SkyCoord(GBM["ra"],GBM["dec"], unit=(u.hourangle, u.deg))
+                print("GBMpos")
+                print(GBMpos)
+                myseparation = SkyCoord.separation(GBMpos,location)
+                print (myseparation)
+                print (mytimeseparation*86400)
+                radius = GBM["error_radius"] 
+                if (myseparation.deg < 3*radius + 1.86):
+                    print ("_______________________________________________________FOUND ONE____________________________________________________________")
+                    print ("Field could overlap ")
+                    print(myseparation, mytimeseparation)
+                    print ("GBM of interest:")
+                    print (GBM)
+                    print ("Image center")
+                    print (location)
+                    goodGBM = GBM
+                    found += 1
+                    print ("\n\n\n")
+        return myseparation, mytimeseparation, goodGBM
+            
+    return 0,0,0
 
 def findfermiimg(fermiTable, input_path):
     filelist = list()
@@ -344,7 +353,6 @@ def process_file(fitsfile, correlation_kernel, order):
     HDU_header = hdu[0].header
     #wcs = WCS(hdu[0].header)
     hdu.close()
-    
     dothefile, GBMalert = check_relevance(HDU_header,fermiTable)
     if dothefile == 0 :
         return
@@ -544,8 +552,13 @@ else:
 
 #singlefile = "/home/echo/Documents/data/log/grenouille_20160622.log"
 
+if fermiOnly:
+    filelist = findfermiimg(fermiTable,input_path)
+else:
+    filelist = findit = os.path.join(input_path+'/IM_*.fits.gz') 
+    filelist = glob.glob(findit)
 
-filelist = findfermiimg(fermiTable,input_path)
+
 imageNumber = previewSize(filelist[first:last])
     
 coret2,dp,dp,dp = create_kernels(4,46,2)
