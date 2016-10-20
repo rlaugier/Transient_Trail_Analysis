@@ -11,8 +11,9 @@ from astropy import wcs
 from astropy.convolution import Gaussian2DKernel, convolve
 from astroquery.vizier import Vizier
 from astroquery.ned import Ned
-from astropy.coordinates import SkyCoord
+from astropy.coordinates import SkyCoord, FK4
 from astropy.table import Table, Column
+from astropy.time import Time, TimeDeltaSec
 import astropy.units as u
 import numpy as np
 import matplotlib.pyplot as plt
@@ -23,6 +24,7 @@ import time
 import glob
 import scipy.signal
 import scipy.optimize
+import copy
 
 
 
@@ -32,6 +34,11 @@ write_images = 0
 show_plots = 0
 write_plots = 1
 insert_stuff = 1
+fermiOnly = 1
+
+#get table from http://heasarc.gsfc.nasa.gov/db-perl/W3Browse/w3table.pl?tablehead=name%3Dfermigbrst&Action=More+Options
+#remove the final "," at the end of the file
+fermifile = '/home/echo/Documents/data/trail/browse_results.csv'
 
 data = np.zeros([2048,2048])
 
@@ -237,7 +244,25 @@ def correlate_image(data_array, correlation_kernel):
 #        relative_result = np.divide(correlation_result,data_array)
     return correlation_result_trim, correlation_bg, correlation_max
     
+def check_relevance(HDU_header, fermiTable):
+    if not ((HDU_header["TRACKSPA"]==0.) & (HDU_header["TRACKSPD"]==0.)):
+        trail = 1
+    else :
+        trail = 0
 
+    w = wcs.WCS(HDU_header)
+    locationraw = w.wcs_pix2world(1024,1024,1)  
+    location = SkyCoord(locationraw[0]*u.deg,locationraw[1]*u.deg)
+    imgtime = Time(HDU_header["DATE-GPS"])
+    
+    fermi_deltat, fermi_separation, GBMalert = fermirelevance (location, imgtime, fermiTable)
+    if not fermi_deltat == 0:
+        return trail, GBMalert
+    elif fermiOnly :
+        return 0, 0
+    else :
+        return trail, 0
+    
 
 def process_file(fitsfile, correlation_kernel, order):
     t1 = time.time()
@@ -250,8 +275,10 @@ def process_file(fitsfile, correlation_kernel, order):
     #wcs = WCS(hdu[0].header)
     hdu.close()
     
-    if not ((HDU_header["TRACKSPA"]==0.) & (HDU_header["TRACKSPD"]==0.)):
+    dothefile, GBMalert = check_relevance(HDU_header,fermiTable)
+    if dothefile == 0 :
         return
+
 
     gauss = Gaussian2DKernel(4/2.35)
     data = convolve(data, gauss)
@@ -278,10 +305,6 @@ def process_file(fitsfile, correlation_kernel, order):
     correlation_mapo2, noise_mapo2, max_mapo2 = correlate_image(datatouse, coret2)
     
 
-    if (debug ==1):
-        print ("image:"); print (fitsfile)
-        print ("destination of the d/dt"); print (time_variation_name)
-        print ("destination of the d2/dt2"); print (correlation_map_name)
 
 
     #imagetosave = fits.open(new_img_name
@@ -461,10 +484,13 @@ def find_max(myimgdata,data,HDU_header):
     mypdf.close()
     return maxval,np.transpose([maxposx,maxposy])
 
-if not sys.argv:
-    input_path = str(input("path to search : "))
-    first = int(input("Start at : "))
-    last = int(input("End at : "))
+if debug:
+    #input_path = str(input("path to search : "))
+    input_path = "/home/echo/Documents/data/trail/"
+    first = 0
+    last = 1000
+
+    
 else:
     input_path = str(sys.argv[1])
     first = int(sys.argv[2])
@@ -472,7 +498,7 @@ else:
     print (first,last,input_path)
 
 #singlefile = "/home/echo/Documents/data/log/grenouille_20160622.log"
-#input_path = "/home/echo/Documents/data/trail/"
+
 
 findit = os.path.join(input_path+'/IM_*.fits.gz')
 filelist = glob.glob(findit)
@@ -496,4 +522,6 @@ for image_a_traiter in filelist[first:last]:
     imageDone += 1
     completion = imageDone / imageNumber * 100
     print ("Done %d sur %d soit %f %%" % (imageDone, imageNumber, completion)) #; print ("sur %d" % imageNumber)
+    print ("START - CURRENT - FINISH - TOTAL  (absolute list index)")
+    print (first, first + imageDone, last, len(filelist))
     #End of progress calculation
