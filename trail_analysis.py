@@ -53,13 +53,63 @@ coret23d = np.zeros([46])
 
 outpath = "/home/echo/Documents/data/trail/output/"
 
+fermiraw = Table.read(fermifile)
+fermiTable = Table.read(fermifile,format="csv")
+col_time = Column(Time(fermiTable["trigger_time"]),name = "timeoftrig")
+fermiTable.add_column(col_time)
+col_pos = Column(SkyCoord(fermiTable["ra"],fermiTable["dec"], unit=(u.hourangle, u.deg)),name="GBpos")
+fermiTable.add_column(col_pos)
+print (fermiTable["GBpos"])
+
+
 def previewSize (filelist):
     numberOfImg = 0
     numberOfImg = len(filelist)
     return numberOfImg
+
+def read_alert_table(filename):
+    alertfile = open(filename, mode = 'r', encoding='ascii', errors="replace")
+    lines = alertfile.readlines()
+    mytable = copy.copy(lines) 
     
+    for myline in np.arange(0,30000,1) :
+        #mystring is the line in string format.
+        mystring = lines[myline]
+        mysplit = mystring.split(sep="|")
+        print (mysplit)
+        mytable[myline] = [mysplit[0],mysplit[1],mysplit[2],mysplit[3],mysplit[4]]
+    tableform = Table(mytable, names=("name","ra","dec","trigger_time","error_radius"))
+    print (tableform)
+        
 
-
+    
+def fermirelevance (location, imgtime, fermiTable):
+    GBMtime = Time(fermiTable["trigger_time"])
+    goodtiming = np.where(fermiTable["trigger_time"])
+    for GBM in fermiTable:
+          
+        #print(GBM[1])
+        GBMtime = Time(GBM["trigger_time"])
+        mytimeseparation = imgtime - GBMtime
+        
+        if (-3*u.hour < mytimeseparation < 3*u.hour):
+            print ("time is within -3h +3h of")
+            print (location)
+            GBMpos = SkyCoord(GBM["ra"],GBM["dec"], unit=(u.hourangle, u.deg))
+            myseparation = SkyCoord.separation(GBMpos,location)
+            radius = GBM["error_radius"] 
+            if myseparation.deg < 3*radius + 10 :
+                print ("Field could overlap ")
+                print(myseparation, mytimeseparation)
+                print ("GBM of interest:")
+                print (GBM)
+                print ("Image center")
+                print (location)
+                return myseparation, mytimeseparation, GBM
+                
+    return 0,0,0
+    
+                
 
 
 def create_kernels(fwhm, trail_length = 46, power = 2):
