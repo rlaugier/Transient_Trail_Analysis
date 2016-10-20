@@ -34,7 +34,7 @@ write_images = 0
 show_plots = 0
 write_plots = 1
 insert_stuff = 1
-fermiOnly = 1
+fermiOnly = 0
 
 #get table from http://heasarc.gsfc.nasa.gov/db-perl/W3Browse/w3table.pl?tablehead=name%3Dfermigbrst&Action=More+Options
 #remove the final "," at the end of the file
@@ -53,6 +53,8 @@ coret23d = np.zeros([46])
 
 outpath = "/home/echo/Documents/data/trail/output/"
 
+
+print("Building the fermi GBM table")
 fermiraw = Table.read(fermifile)
 fermiTable = Table.read(fermifile,format="csv")
 col_time = Column(Time(fermiTable["trigger_time"]),name = "timeoftrig")
@@ -316,9 +318,9 @@ def correlate_image(data_array, correlation_kernel):
     
 def check_relevance(HDU_header, fermiTable):
     if not ((HDU_header["TRACKSPA"]==0.) & (HDU_header["TRACKSPD"]==0.)):
-        trail = 1
-    else :
         trail = 0
+    else :
+        trail = 1
 
     w = wcs.WCS(HDU_header)
     locationraw = w.wcs_pix2world(1024,1024,1)  
@@ -438,6 +440,8 @@ def find_max(myimgdata,data,HDU_header):
     maxval = np.zeros(ntc)
     maxposx = np.zeros(ntc)
     maxposy = np.zeros(ntc)
+    refinedposy = np.zeros(ntc)
+    refinedlength = np.zeros(ntc)
     maskval = np.median(imgdata)
     
     report = os.path.join(outpath+HDU_header["FILENAME"]+"_"+"output.pdf")
@@ -455,11 +459,17 @@ def find_max(myimgdata,data,HDU_header):
         maxposx[n] = maxposa[0]
         maxposy[n] = maxposa[1]
         
-        print (maskval)
+        print (maskval)     
+        print ([maxposy[n],maxposx[n]])
         
-        print ([maxposy[n]+21,maxposx[n]])
-        rawlocation = w.wcs_pix2world(maxposy[n]+21,maxposx[n],1)
-        rawlocationtail = w.wcs_pix2world(maxposy[n]+21-40,maxposx[n],1)
+        localsig = imgdata[maxposx[n],max(int(maxposy[n]-100),0):min(int(maxposy[n]+46),len(imgdata))]
+        deriv = np.diff(localsig)
+        localposy = deriv[2:120].argmax()
+        refinedposy[n] = localposy - 100 + 24 + maxposy[n]
+        refinedlength[n] = deriv[10:].argmin()-localposy
+        print ("refinedposy refinedlength", refinedposy[n],refinedlength[n])
+        rawlocation = w.wcs_pix2world(refinedposy[n],maxposx[n],1)
+        rawlocationtail = w.wcs_pix2world(refinedposy[n],maxposx[n],1)
         location = SkyCoord(rawlocation[0]*u.deg,rawlocation[1]*u.deg)
         locationtail = SkyCoord(rawlocationtail[0]*u.deg,rawlocationtail[1]*u.deg)
         isbrightstar = check_star(location,locationtail)
@@ -476,7 +486,7 @@ def find_max(myimgdata,data,HDU_header):
     #        ax1.plot(t, s1, 'b')
             plt.figure(figsize=(12, 5))
             plt.title(HDU_header["FILENAME"]+" candidate number "+str(n)+" location "+str(location))
-            plt.xlabel('Time/RA (0.22s)/(pix)')
+            plt.xlabel('Time/RA (0.22s)/(pix)'+ str(refinedposy[n]) +"length : " + str(refinedlength[n]))
             plt.ylabel('Image value (ADU)')
     #        ax1.grid(True)
     #        ax2 = ax1.twinx()
