@@ -38,7 +38,7 @@ fermiOnly = 1
 
 #get table from http://heasarc.gsfc.nasa.gov/db-perl/W3Browse/w3table.pl?tablehead=name%3Dfermigbrst&Action=More+Options
 #remove the final "," at the end of the file
-fermifile = '/home/echo/Documents/data/trail/browse_results.csv'
+fermifile = '/home/echo/Documents/data/trail/browse_results_short.csv'
 
 data = np.zeros([2048,2048])
 
@@ -84,31 +84,50 @@ def read_alert_table(filename):
 
     
 def fermirelevance (location, imgtime, fermiTable):
-    GBMtime = Time(fermiTable["trigger_time"])
-    goodtiming = np.where(fermiTable["trigger_time"])
+#    goodtiming =  (np.where(fermiTable["timeoftrig"]>imgtime - 10*u.hour)) & (np.where(fermiTable["timeoftrig"]<imgtime + 10*u.hour))
     for GBM in fermiTable:
-          
-        #print(GBM[1])
-        GBMtime = Time(GBM["trigger_time"])
-        mytimeseparation = imgtime - GBMtime
-        
-        if (-3*u.hour < mytimeseparation < 3*u.hour):
-            print ("time is within -3h +3h of")
+        mytimeseparation = imgtime - GBM["timeoftrig"]
+        print ("time is within -3h +3h of")
+        print ("location")
+        print (location)
+        GBMpos = SkyCoord(GBM["ra"],GBM["dec"], unit=(u.hourangle, u.deg))
+        print("GBMpos")
+        print(GBMpos)
+        myseparation = SkyCoord.separation(GBMpos,location)
+        print (myseparation)
+        radius = GBM["error_radius"] 
+        goodpos = np.where(myseparation.deg < 3*radius + 60)
+        for myGBM in (fermiTable[goodpos]):
+            print ("Field could overlap ")
+            print(myseparation, mytimeseparation)
+            print ("GBM of interest:")
+            print (myGBM)
+            print ("Image center")
             print (location)
-            GBMpos = SkyCoord(GBM["ra"],GBM["dec"], unit=(u.hourangle, u.deg))
-            myseparation = SkyCoord.separation(GBMpos,location)
-            radius = GBM["error_radius"] 
-            if myseparation.deg < 3*radius + 10 :
-                print ("Field could overlap ")
-                print(myseparation, mytimeseparation)
-                print ("GBM of interest:")
-                print (GBM)
-                print ("Image center")
-                print (location)
-                return myseparation, mytimeseparation, GBM
-                
-    return 0,0,0
-    
+            return myseparation, mytimeseparation, myGBM
+        return 0,0,0
+
+def findfermiimg(fermiTable, input_path):
+    filelist = list()
+    for GBM in fermiTable:
+        prefix = "IM"
+        mytime = GBM["timeoftrig"]
+        dayelem = str("").join(mytime.iso.split(sep=" ")[0].split(sep="-"))
+        hourelem = str("").join(mytime.iso.split(sep=" ")[1].split(sep=":")).split(sep=".")[0][0:2]
+        namestart = str("_").join((prefix,dayelem,hourelem))
+        nametosearch = str("").join((namestart,"*.fits.gz"))
+        
+        findit = os.path.join(input_path+"/"+namestart+'*.fits.gz')
+        print (findit)
+        newfiles = glob.glob(findit)
+        filelist += newfiles
+    print (filelist)
+    print ("length = %d" % (len(filelist)))
+    return( filelist)
+        
+
+
+        
                 
 
 
@@ -228,15 +247,16 @@ def maxfunctiono0(C, S, D):
 #    tominimize = tresponse[len(tresponse)/2-46/2] / max(sresponse)
     tominimize = max(np.divide(tresponse,sresponse))
 
-    
-    plt.plot(t, s)
-    
-    plt.xlabel('x (pix)')
-    plt.ylabel('Value (ADU)')
-    plt.title('Correlation kernel')
-    plt.grid(True)
-    
-    plt.show()
+    if show_plots:
+        
+        plt.plot(t, s)
+        
+        plt.xlabel('x (pix)')
+        plt.ylabel('Value (ADU)')
+        plt.title('Correlation kernel')
+        plt.grid(True)
+        
+        plt.show()
       
     
     print (tominimize)
@@ -306,12 +326,10 @@ def check_relevance(HDU_header, fermiTable):
     imgtime = Time(HDU_header["DATE-GPS"])
     
     fermi_deltat, fermi_separation, GBMalert = fermirelevance (location, imgtime, fermiTable)
-    if not fermi_deltat == 0:
+    if fermiOnly :
         return trail, GBMalert
-    elif fermiOnly :
-        return 0, 0
-    else :
-        return trail, 0
+    else:
+        return trail, GBMalert
     
 
 def process_file(fitsfile, correlation_kernel, order):
@@ -327,6 +345,8 @@ def process_file(fitsfile, correlation_kernel, order):
     
     dothefile, GBMalert = check_relevance(HDU_header,fermiTable)
     if dothefile == 0 :
+        return
+    if (GBMalert == 0) & fermiOnly:
         return
 
 
@@ -357,12 +377,6 @@ def process_file(fitsfile, correlation_kernel, order):
 
 
 
-    #imagetosave = fits.open(new_img_name
-    #Saving the image to the disk
-    #imagetosave[0].data = new_img
-    #imagetosave.close();
-    #imagetosave.writeto(new_img_name, clobber = True)
-
     if write_images:
         imghdu = fits.PrimaryHDU(data=(time_variation),header = HDU_header, do_not_scale_image_data=False, ignore_blank=False,uint=True, scale_back=None)
         imghdu.writeto(time_variation_name,clobber = True )
@@ -373,41 +387,12 @@ def process_file(fitsfile, correlation_kernel, order):
 
 
 
-
-
-
-#    
-#    fig, ax1 = plt.subplots(figsize=(20, 5))
-#    t = np.arange(0, 2048, 1)
-#    ax1 = np.transpose([smart_trim(correlation_mapo2[800,t],40,np.median(correlation_mapo2[800,:]))])
-#    plt.plot(t, ax1)
-#    
-#    plt.xlabel('time (s)')
-#    plt.ylabel('Value (ADU)')
-#    plt.title('Sample from the correlation')
-#    plt.grid(True)
-#    plt.show()
     
     if write_images:
         plt.savefig("test.png")
         plt.savefig('/home/echo/Documents/data/trail/plot1.png')
 
-    
-#    fig, ax1 = plt.subplots(figsize=(20, 5))
-#    t = np.arange(0, 2048, 1)
-#    s1 = max_mapo2[t]
-#    ax1.plot(t, s1, 'b.')
-#    ax1.set_xlabel('y position (pix)')
-#    # Make the y-axis label and tick labels match the line color.
-#    ax1.set_ylabel('Signal correlation', color='b')
-#    
-#    
-#    
-#    ax2 = ax1.twinx()
-#    s2 = noise_mapo2[t]
-#    ax2.plot(t, s2, 'r.')
-#    ax2.set_ylabel('Sigma correlation', color='r')
-#    plt.show()
+
     
     find_max(correlation_mapo2,data,HDU_header)
     
@@ -550,8 +535,7 @@ else:
 #singlefile = "/home/echo/Documents/data/log/grenouille_20160622.log"
 
 
-findit = os.path.join(input_path+'/IM_*.fits.gz')
-filelist = glob.glob(findit)
+filelist = findfermiimg(fermiTable,input_path)
 imageNumber = previewSize(filelist[first:last])
     
 coret2,dp,dp,dp = create_kernels(4,46,2)
