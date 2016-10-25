@@ -444,29 +444,39 @@ def mask_verybright(HDU_header):
     except :
         print ("no very bright stars ")
         return 0
-        
-def check_star_table(pixlocation):
-    global w
-    diffraction_branch_width = 5./3600
-    mylocationraw = w.wcs_pix2world(pixlocation[1],pixlocation[0],1)
-    mylocation = SkyCoord(mylocationraw[0]*u.deg,mylocationraw[1]*u.deg)
+def make_star_table(w):
     image_centerraw = w.wcs_pix2world(1024,1024,1)
     image_center = SkyCoord(image_centerraw[0]*u.deg,image_centerraw[1]*u.deg)
-    brightStars = Vizier(catalog = "USNOB1.0", column_filters={"R1mag":"< 10"},row_limit=50).query_region(image_center, width = "1d")[0]
+    print (image_center)
+    brightStars = Vizier(catalog = "USNOB1.0", column_filters={"R1mag":"< 10.5"},row_limit=50).query_region(image_center, width = "1.5d")[0]
 #    fermiraw = Table.read(fermifile)
 #    fermiTable = Table.read(fermifile,format="csv")
 #    col_time = Column(Time(fermiTable["trigger_time"]),name = "timeoftrig")
 #    fermiTable.add_column(col_time)
-
+    
+    brightStars.sort("R1mag")
+    print (brightStars["R1mag","RAJ2000","DEJ2000"])
     col_pos = Column(SkyCoord(brightStars["_RAJ2000"], brightStars["_DEJ2000"], unit=(u.hourangle, u.deg)),name="SCPos")
     brightStars.add_column(col_pos)
-    brightStars.sort("R1mag")
-    print (brightStars)
+    
+    return brightStars
+
+
+def check_star_table(pixlocation, w, brightStars):
+    diffraction_branch_width = 5./3600
+    
+    discard = 0
+    mylocationraw = w.wcs_pix2world(pixlocation[1],pixlocation[0],1)
+    mylocation = SkyCoord(mylocationraw[0]*u.deg,mylocationraw[1]*u.deg)
+    print (mylocation)
+
     for catobject in brightStars:
         myseparation = SkyCoord.separation(catobject["SCPos"],mylocation)
-        if myseparation.arcsec < 10:
-            print ("in halo of very bright star:")
-            print (catobject)
+#        print (myseparation.arcsec)
+#        print ([catobject["RAJ2000"],catobject["DEJ2000"]])
+        if myseparation.arcsec < 20:
+            print ("Seem to be a bright star (mag<10)")
+            print (myseparation.arcsec)
             discard = 1
             
             
@@ -474,14 +484,14 @@ def check_star_table(pixlocation):
             #For very bright objects, check a wider separation
             if myseparation.arcsec < 120 :
                 print ("in halo of very bright star:")
-                print (catobject)
+                print (myseparation.arcsec)
                 discard = 1
             #For very bright objects, check also the diffraction branches
             d1 = mylocation.ra.deg - catobject["SCPos"].ra.deg
             d2 = mylocation.dec.deg - catobject["SCPos"].dec.deg
             if (abs(d1)<diffraction_branch_width) | (abs(d2)<diffraction_branch_width):
                 print ("Looks like a diffraction branch")
-                print (catobject)
+                print (myseparation.arcsec)
                 discard = 1
     return discard
 
@@ -507,6 +517,8 @@ def find_max(myimgdata,data,HDU_header):
     
     mypdf = PdfPages(report)
     
+    brightStars = make_star_table(w)
+    
 
     
     for n in np.arange(0,ntc,1):
@@ -524,14 +536,17 @@ def find_max(myimgdata,data,HDU_header):
         localsig = imgdata[maxposx[n],max(int(maxposy[n]-100),0):min(int(maxposy[n]+46),len(imgdata))]
         deriv = np.diff(localsig)
         localposy = deriv[2:120].argmax()
-        refinedposy[n] = localposy - 100 + 24 + maxposy[n]
+        refinedposy[n] = localposy - 100 + 25 + maxposy[n]
         refinedlength[n] = deriv[10:].argmin()-localposy
         print ("refinedposy refinedlength", refinedposy[n],refinedlength[n])
         rawlocation = w.wcs_pix2world(refinedposy[n],maxposx[n],1)
-        rawlocationtail = w.wcs_pix2world(refinedposy[n],maxposx[n],1)
+#        rawlocationtail = w.wcs_pix2world(refinedposy[n],maxposx[n],1)
         location = SkyCoord(rawlocation[0]*u.deg,rawlocation[1]*u.deg)
-        locationtail = SkyCoord(rawlocationtail[0]*u.deg,rawlocationtail[1]*u.deg)
-        isbrightstar = check_star(location,locationtail)
+#        locationtail = SkyCoord(rawlocationtail[0]*u.deg,rawlocationtail[1]*u.deg)
+#        isbrightstar = check_star(location,locationtail)
+        
+
+        isbrightstar = check_star_table([maxposx[n],refinedposy[n]], w, brightStars)
         print (isbrightstar)
         if not isbrightstar:
             
