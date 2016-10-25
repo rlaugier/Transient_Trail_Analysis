@@ -28,13 +28,13 @@ import copy
 
 
 
-debug = 0
+debug = 1
 order = 0
 write_images = 0
 show_plots = 0
 write_plots = 1
 insert_stuff = 1
-fermiOnly = 1
+fermiOnly = 0
 
 #get table from http://heasarc.gsfc.nasa.gov/db-perl/W3Browse/w3table.pl?tablehead=name%3Dfermigbrst&Action=More+Options
 #remove the final "," at the end of the file
@@ -92,7 +92,7 @@ def fermirelevance (location, imgtime, fermiTable):
     if fermiOnly :
         for GBM in fermiTable:
             mytimeseparation = imgtime.jd - GBM["timeoftrig"].jd
-            print (found)
+            myseparation = 180*u.deg
             if (mytimeseparation*86400 < 3600.) & (mytimeseparation*86400 > -3600):
                 print ("location")
                 print (location)
@@ -124,9 +124,8 @@ def findfermiimg(fermiTable, input_path):
         prefix = "IM"
         mytime = GBM["timeoftrig"]
         dayelem = str("").join(mytime.iso.split(sep=" ")[0].split(sep="-"))
-        hourelem = str("").join(mytime.iso.split(sep=" ")[1].split(sep=":")).split(sep=".")[0][0:2]
+        hourelem = str("").join(mytime.iso.split(sep=" ")[1].split(sep=":")).split(sep=".")[0][0:1]
         namestart = str("_").join((prefix,dayelem,hourelem))
-        nametosearch = str("").join((namestart,"*.fits.gz"))
         
         findit = os.path.join(input_path+"/"+namestart+'*.fits.gz')
         print (findit)
@@ -347,7 +346,7 @@ def process_file(fitsfile, correlation_kernel, order):
     t1 = time.time()
     
     file_name = os.path.basename(fitsfile)
-    
+    print ("Processing file : ",fitsfile)
     hdu = fits.open(fitsfile)
     data = hdu[0].data
     HDU_header = hdu[0].header
@@ -355,6 +354,10 @@ def process_file(fitsfile, correlation_kernel, order):
     hdu.close()
     dothefile, GBMalert = check_relevance(HDU_header,fermiTable)
     if dothefile == 0 :
+        if not GBMalert == 0 :
+            print("An image for Nu")
+            print(GBMalert)
+            print(HDU_header["FILENAME"])
         return
     if (GBMalert == 0) & fermiOnly:
         return
@@ -433,6 +436,54 @@ def check_star(starlocation,starlocationtail):
             return 0
 
 
+def mask_verybright(HDU_header):
+    image_center = w.wcs_pix2world([1024,1024])
+    try:
+        brightStars = Vizier(catalog = "USNOB1.0", column_filters={"R1mag":"< 8"},row_limit=50).query_region(image_center, width = "1d")[0]        
+        return brightStars
+    except :
+        print ("no very bright stars ")
+        return 0
+        
+def check_star_table(pixlocation):
+    global w
+    diffraction_branch_width = 5./3600
+    mylocationraw = w.wcs_pix2world(pixlocation[1],pixlocation[0],1)
+    mylocation = SkyCoord(mylocationraw[0]*u.deg,mylocationraw[1]*u.deg)
+    image_centerraw = w.wcs_pix2world(1024,1024,1)
+    image_center = SkyCoord(image_centerraw[0]*u.deg,image_centerraw[1]*u.deg)
+    brightStars = Vizier(catalog = "USNOB1.0", column_filters={"R1mag":"< 10"},row_limit=50).query_region(image_center, width = "1d")[0]
+#    fermiraw = Table.read(fermifile)
+#    fermiTable = Table.read(fermifile,format="csv")
+#    col_time = Column(Time(fermiTable["trigger_time"]),name = "timeoftrig")
+#    fermiTable.add_column(col_time)
+
+    col_pos = Column(SkyCoord(brightStars["_RAJ2000"], brightStars["_DEJ2000"], unit=(u.hourangle, u.deg)),name="SCPos")
+    brightStars.add_column(col_pos)
+    brightStars.sort("R1mag")
+    print (brightStars)
+    for catobject in brightStars:
+        myseparation = SkyCoord.separation(catobject["SCPos"],mylocation)
+        if myseparation.arcsec < 10:
+            print ("in halo of very bright star:")
+            print (catobject)
+            discard = 1
+            
+            
+        if catobject["R1mag"] < 8:
+            #For very bright objects, check a wider separation
+            if myseparation.arcsec < 120 :
+                print ("in halo of very bright star:")
+                print (catobject)
+                discard = 1
+            #For very bright objects, check also the diffraction branches
+            d1 = mylocation.ra.deg - catobject["SCPos"].ra.deg
+            d2 = mylocation.dec.deg - catobject["SCPos"].dec.deg
+            if (abs(d1)<diffraction_branch_width) | (abs(d2)<diffraction_branch_width):
+                print ("Looks like a diffraction branch")
+                print (catobject)
+                discard = 1
+    return discard
 
 
 
