@@ -448,7 +448,7 @@ def make_star_table(w):
     image_centerraw = w.wcs_pix2world(1024,1024,1)
     image_center = SkyCoord(image_centerraw[0]*u.deg,image_centerraw[1]*u.deg)
     print (image_center)
-    brightStars = Vizier(catalog = "USNOB1.0", column_filters={"R1mag":"< 10.5"},row_limit=50).query_region(image_center, width = "1.5d")[0]
+    brightStars = Vizier(catalog = "USNOB1.0", column_filters={"R1mag":"< 10"},row_limit=50).query_region(image_center, width = "1.5d")[0]
 #    fermiraw = Table.read(fermifile)
 #    fermiTable = Table.read(fermifile,format="csv")
 #    col_time = Column(Time(fermiTable["trigger_time"]),name = "timeoftrig")
@@ -458,6 +458,7 @@ def make_star_table(w):
     print (brightStars["R1mag","RAJ2000","DEJ2000"])
     col_pos = Column(SkyCoord(brightStars["_RAJ2000"], brightStars["_DEJ2000"], unit=(u.hourangle, u.deg)),name="SCPos")
     brightStars.add_column(col_pos)
+    brightStars.write("lastbrightstar.txt",format="ascii")
     
     return brightStars
 
@@ -605,7 +606,7 @@ def find_max(myimgdata,data,HDU_header):
 
 if debug:
     #input_path = str(input("path to search : "))
-    input_path = "/home/echo/Documents/data/trail/"
+    input_path = "/home/echo/Documents/data/trail/latest"
     first = 0
     last = 1000
 
